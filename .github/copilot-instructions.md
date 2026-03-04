@@ -1,7 +1,5 @@
 # VBD-Copilot - Copilot Instructions
 
-VBD-Copilot is built on the [GitHub Copilot SDK](https://github.com/github/copilot-sdk). It generates PowerPoint (.pptx) presentations and demo guides for Microsoft Cloud Solution Architects.
-
 ## Agents
 
 | Agent | Role |
@@ -22,7 +20,7 @@ VBD-Copilot is built on the [GitHub Copilot SDK](https://github.com/github/copil
 - `outputs/slides/.fragments/` - intermediate code fragments per section
 - `outputs/demos/` - demo guide `.md` + companion scripts
 - `plans/` - intermediate plan files
-- `pptx_utils.py` - shared Python utilities for PPTX generation (do NOT duplicate; do NOT redefine its functions)
+- `pptx_utils.py` - shared utilities for PPTX generation - do NOT duplicate or redefine its functions
 
 ## Content Levels
 
@@ -40,3 +38,10 @@ VBD-Copilot is built on the [GitHub Copilot SDK](https://github.com/github/copil
 5. **No invented URLs** - every link must be real and verified
 6. **No em-dashes** - use hyphens
 7. **No indenting** in `.py` fragments - the conductor indents during assembly
+
+## Landmines
+
+- Use `uv` instead of `pip` for all Python dependency operations
+- Do not refactor `pptx_utils.py` - it is a shared contract across all subagents
+- Fragment files in `outputs/slides/.fragments/` are unindented by design - do not auto-format them
+- Plan files in `plans/` are intermediate and may be incomplete - do not treat them as ground truth
