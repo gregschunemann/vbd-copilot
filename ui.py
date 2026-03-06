@@ -225,7 +225,7 @@ class CopilotUI:
                 dot = dots[i % len(dots)]
                 i += 1
                 sys.stdout.write(
-                    f"\r  {dot} VBD-Copilot is working - input is locked while the agent runs..."
+                    f"\r  {dot} VBD-Copilot is working..."
                 )
                 sys.stdout.flush()
                 self._baking_line_active = True
@@ -275,6 +275,7 @@ class CopilotUI:
         choices: list[str] | None = None,
         allow_freeform: bool = True,
     ) -> tuple[str, bool]:
+        self._stop_baking_indicator()
         try:
             self.console.print()
             self.console.print(f"  [yellow bold]? Agent asks:[/yellow bold] {question}")
@@ -312,7 +313,8 @@ class CopilotUI:
             self.console.print()
             return answer, was_freeform
         finally:
-            pass
+            if self._tracker:
+                self._start_baking_indicator()
 
     # ── Terminal resize handling ────────────────────────────────────────────────
 
