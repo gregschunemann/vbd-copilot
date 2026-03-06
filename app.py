@@ -301,6 +301,7 @@ async def main() -> None:
 
             ui.print_routing(agent_name, ui.current_model)
             ui.print_assistant_prefix()
+            ui.print_input_lock_state(True)
             ui.reset_deltas()
 
             effective_timeout = AGENT_TIMEOUTS.get(
@@ -314,6 +315,7 @@ async def main() -> None:
             except TimeoutError:
                 ui.print_response_end()
                 ui.stop_agent_display()
+                ui.print_input_lock_state(False)
                 mins = effective_timeout // 60
                 ui.console.print(
                     f"  [yellow bold]Timeout[/yellow bold] [yellow]after {mins} min - "
@@ -335,6 +337,7 @@ async def main() -> None:
             ui.print_output_files(new_files)
 
             ui.stop_agent_display()
+            ui.print_input_lock_state(False)
 
     except KeyboardInterrupt:
         ui.stop_agent_display()

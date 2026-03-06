@@ -5,6 +5,7 @@ Uses prompt_toolkit for input and rich for output rendering.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import sys
@@ -135,11 +136,13 @@ class CopilotUI:
         self.current_model: str = "claude-sonnet-4.6"
         self.session_id: str | None = None
         self._received_deltas: bool = False
-        self.debug_mode: bool = True
+        self.debug_mode: bool = False
         self._tracker: AgentRunTracker | None = None
         self._needs_newline: bool = False  # True when stdout has pending text without trailing \n
         self._in_reasoning: bool = False  # True while streaming reasoning deltas
         self._last_width: int = shutil.get_terminal_size().columns
+        self._baking_task: asyncio.Task[None] | None = None
+        self._baking_line_active: bool = False
 
         HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -191,13 +194,52 @@ class CopilotUI:
             agent=self.current_agent,
             model=self.current_model,
         )
+        self._start_baking_indicator()
 
     def stop_agent_display(self) -> None:
         """Print a summary of the agent run."""
+        self._stop_baking_indicator()
         if self._tracker:
             summary = self._tracker.summary()
             self._tracker = None
             self.console.print(f"  {summary}")
+
+    def _start_baking_indicator(self) -> None:
+        self._stop_baking_indicator()
+        self._baking_task = asyncio.create_task(self._baking_pulse())
+
+    def _stop_baking_indicator(self) -> None:
+        if self._baking_task:
+            self._baking_task.cancel()
+            self._baking_task = None
+        self._clear_baking_line()
+
+    async def _baking_pulse(self) -> None:
+        dots = ["\033[96m●\033[0m", "\033[90m●\033[0m"]
+        i = 0
+        try:
+            while self._tracker is not None:
+                if self._needs_newline or self._in_reasoning:
+                    await asyncio.sleep(1.5)
+                    continue
+                dot = dots[i % len(dots)]
+                i += 1
+                sys.stdout.write(
+                    f"\r  {dot} VBD-Copilot is working - input is locked while the agent runs..."
+                )
+                sys.stdout.flush()
+                self._baking_line_active = True
+                await asyncio.sleep(1.5)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._clear_baking_line()
+
+    def _clear_baking_line(self) -> None:
+        if self._baking_line_active:
+            sys.stdout.write("\r" + (" " * 96) + "\r")
+            sys.stdout.flush()
+            self._baking_line_active = False
 
     async def prompt(self) -> str | None:
         # Redraw banner if terminal was resized since last prompt
@@ -434,6 +476,7 @@ class CopilotUI:
 
     def _flush_newline(self) -> None:
         """Emit a pending newline if streaming text didn't end with one."""
+        self._clear_baking_line()
         if self._needs_newline:
             sys.stdout.write("\n")
             sys.stdout.flush()
@@ -457,6 +500,7 @@ class CopilotUI:
 
         if etype == SessionEventType.ASSISTANT_MESSAGE_DELTA:
             self._received_deltas = True
+            self._clear_baking_line()
             if self._in_reasoning:
                 self._flush_newline()
                 self._in_reasoning = False
@@ -469,6 +513,7 @@ class CopilotUI:
 
         if etype == SessionEventType.ASSISTANT_REASONING_DELTA:
             if self.debug_mode:
+                self._clear_baking_line()
                 self._in_reasoning = True
                 delta = getattr(d, "delta_content", None) or ""
                 if delta:
@@ -482,8 +527,8 @@ class CopilotUI:
             tool = getattr(d, "tool_name", None) or getattr(d, "mcp_tool_name", "?")
             if tracker:
                 tracker.tool_count += 1
-            self.console.print(f"  [bold blue]>>[/bold blue] [blue]{tool}[/blue]", end="")
             if self.debug_mode:
+                self.console.print(f"  [bold blue]>>[/bold blue] [blue]{tool}[/blue]", end="")
                 args = getattr(d, "arguments", None)
                 if args is not None:
                     try:
@@ -491,13 +536,18 @@ class CopilotUI:
                         self.console.print(f" [dim]{raw[:80]}[/dim]", end="")
                     except Exception:
                         pass
-            self._needs_newline = True
+                self._needs_newline = True
+            elif tracker and (tracker.tool_count == 1 or tracker.tool_count % 5 == 0):
+                self.console.print(
+                    f"  [dim cyan]* progress: {tracker.tool_count} tool calls executed[/dim cyan]"
+                )
             return
 
         if etype == SessionEventType.TOOL_EXECUTION_COMPLETE:
-            duration = getattr(d, "duration", None)
-            dur_markup = f" [dim]{duration}ms[/dim]" if duration else ""
-            self.console.print(f" [blue]<< done[/blue]{dur_markup}")
+            if self.debug_mode:
+                duration = getattr(d, "duration", None)
+                dur_markup = f" [dim]{duration}ms[/dim]" if duration else ""
+                self.console.print(f" [blue]<< done[/blue]{dur_markup}")
             self._needs_newline = False
             return
 
@@ -511,7 +561,8 @@ class CopilotUI:
 
         if etype == SessionEventType.SUBAGENT_SELECTED:
             name = getattr(d, "agent_name", "?") or "?"
-            self._sidebar(f"[cyan bold]~~ selected: {name}[/cyan bold]")
+            if self.debug_mode:
+                self._sidebar(f"[cyan bold]~~ selected: {name}[/cyan bold]")
             return
 
         if etype == SessionEventType.SUBAGENT_STARTED:
@@ -523,12 +574,13 @@ class CopilotUI:
 
         if etype == SessionEventType.SUBAGENT_COMPLETED:
             name = getattr(d, "agent_name", "?") or "?"
-            self._sidebar(f"[cyan]<- done:     {name}[/cyan]")
+            self._sidebar(f"[cyan]v subagent done: {name}[/cyan]")
             return
 
         if etype == SessionEventType.SUBAGENT_DESELECTED:
             name = getattr(d, "agent_name", "?") or "?"
-            self._sidebar(f"[dim cyan]   deselected: {name}[/dim cyan]")
+            if self.debug_mode:
+                self._sidebar(f"[dim cyan]   deselected: {name}[/dim cyan]")
             return
 
         if etype == SessionEventType.SUBAGENT_FAILED:
@@ -539,10 +591,13 @@ class CopilotUI:
 
         if etype == SessionEventType.SESSION_HANDOFF:
             name = getattr(d, "agent_name", None) or "?"
-            self._sidebar(f"[yellow]~~ handoff -> {name}[/yellow]")
+            if self.debug_mode:
+                self._sidebar(f"[yellow]~~ handoff -> {name}[/yellow]")
             return
 
         if etype == SessionEventType.ASSISTANT_USAGE:
+            if not self.debug_mode:
+                return
             in_t  = int(getattr(d, "input_tokens",       0) or 0)
             out_t = int(getattr(d, "output_tokens",      0) or 0)
             cr_t  = int(getattr(d, "cache_read_tokens",  0) or 0)
@@ -556,12 +611,14 @@ class CopilotUI:
             return
 
         if etype == SessionEventType.SESSION_COMPACTION_START:
-            self._sidebar("[dim yellow]compaction started...[/dim yellow]")
+            if self.debug_mode:
+                self._sidebar("[dim yellow]compaction started...[/dim yellow]")
             return
 
         if etype == SessionEventType.SESSION_COMPACTION_COMPLETE:
-            post = int(getattr(d, "post_compaction_tokens", 0) or 0)
-            self._sidebar(f"[dim yellow]compaction done tokens={post}[/dim yellow]")
+            if self.debug_mode:
+                post = int(getattr(d, "post_compaction_tokens", 0) or 0)
+                self._sidebar(f"[dim yellow]compaction done tokens={post}[/dim yellow]")
             return
 
         # ── Debug-only events (sidebar when live, console otherwise) ──────────
@@ -630,6 +687,12 @@ class CopilotUI:
     def print_assistant_prefix(self) -> None:
         self.console.print()
         self.console.print("[green bold]Assistant >>>[/green bold]")
+
+    def print_input_lock_state(self, locked: bool) -> None:
+        if locked:
+            self.console.print("  [dim]Input locked while VBD-Copilot is working...[/dim]")
+        else:
+            self.console.print("  [dim]Input unlocked - ready for your next prompt.[/dim]")
 
     def print_response_end(self) -> None:
         self._flush_newline()
