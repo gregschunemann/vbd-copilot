@@ -782,8 +782,8 @@ DEFAULT_MODEL = "claude-sonnet-4.6"
 # Sub-agents are given generous time too since they are called by conductors
 # and the conductor's own timeout is the outer bound.
 AGENT_TIMEOUTS: dict[str, int] = {
-    "slide-conductor":        7200,  # 120 min - full research + build + QA
-    "demo-conductor":         7200,  # 120 min - full research + build + review
+    "slide-conductor":       14400,  # 240 min - full research + build + QA
+    "demo-conductor":        14400,  # 240 min - full research + build + review
     "research-subagent":       600,  # 10 min
     "demo-research-subagent":  600,  # 10 min
     "slide-builder-subagent":  600,  # 10 min
