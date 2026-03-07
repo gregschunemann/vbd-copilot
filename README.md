@@ -20,7 +20,7 @@
   - [Slide Session Durations](#slide-session-durations)
   - [Prerequisites](#prerequisites)
   - [Getting Started](#getting-started)
-    - [One-time setup: authenticate the Copilot CLI](#one-time-setup-authenticate-the-copilot-cli)
+    - [One-time setup: authenticate the GitHub CLI](#one-time-setup-authenticate-the-github-cli)
     - [Option A - Docker (recommended)](#option-a---docker-recommended)
     - [Option B - GitHub Codespaces (zero install)](#option-b---github-codespaces-zero-install)
     - [Option C - Native install](#option-c---native-install)
@@ -162,27 +162,32 @@ This tool delegates to GitHub Copilot models via the GitHub Copilot SDK. It does
 ## Prerequisites
 
 - A **GitHub Copilot** subscription (Individual, Business, or Enterprise) with CLI access
+- The [**GitHub CLI** (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`) - required for Docker to pass your auth token into the container
 - **One** of the following run methods:
   - **Docker** (recommended) - just Docker Desktop / Docker Engine
   - **GitHub Codespaces** - nothing to install, runs in the browser
-  - **Native** - Python 3.11+, LibreOffice Impress, Poppler, and the GitHub Copilot CLI on your machine
+  - **Native** - Python 3.11+, LibreOffice Impress, Poppler on your machine
 
 ## Getting Started
 
-### One-time setup: authenticate the Copilot CLI
+### One-time setup: authenticate the GitHub CLI
 
-Before using any run method, you need a local Copilot CLI session. If you already use GitHub Copilot in VS Code or the CLI, you may already be authenticated.
+Before using any run method, authenticate the GitHub CLI. If you already use GitHub Copilot in VS Code, you still need this step for Docker and native usage.
 
 ```bash
-# Install (if not already present)
-gh extension install github/gh-copilot
+# Install the GitHub CLI (if not already present)
+# macOS:  brew install gh
+# Linux:  see https://github.com/cli/cli/blob/trunk/docs/install_linux.md
 
 # Sign in - opens a browser for device-flow auth
 gh auth login
-gh copilot --version          # confirms it works
+
+# Verify it works
+gh auth token                 # should print a token
+gh copilot --version          # confirms Copilot extension works
 ```
 
-This creates auth tokens under `~/.copilot/` on your machine.
+This stores your GitHub OAuth token in your OS credential store (macOS Keychain, Windows Credential Manager) where `gh auth token` can retrieve it.
 
 ---
 
@@ -200,24 +205,30 @@ docker build -t vbd-copilot .
 
 # Run the TUI
 docker run -it --rm \
-  -v ~/.copilot:/home/app/.copilot:ro \
+  -e GITHUB_TOKEN=$(gh auth token) \
   -v "$(pwd)/outputs:/app/outputs" \
   vbd-copilot
 ```
 
-| Mount | Purpose |
-|-------|---------|
-| `~/.copilot` -> `/home/app/.copilot` | Shares your Copilot auth tokens (read-only) |
+| Parameter | Purpose |
+|-----------|---------|
+| `-e GITHUB_TOKEN=$(gh auth token)` | Passes your GitHub auth token into the container |
 | `./outputs` -> `/app/outputs` | Generated `.pptx`, demo guides, and scripts persist on your host |
 
 > [!TIP]
 > Add an alias for convenience:
 >
 > ```bash
-> alias vbd='docker run -it --rm -v ~/.copilot:/home/app/.copilot:ro -v "$(pwd)/outputs:/app/outputs" vbd-copilot'
+> alias vbd='docker run -it --rm -e GITHUB_TOKEN=$(gh auth token) -v "$(pwd)/outputs:/app/outputs" vbd-copilot'
 > ```
 >
 > Then just run `vbd` from inside the repo.
+
+> [!NOTE]
+> **Why `GITHUB_TOKEN`?** On native installs, the Copilot CLI reads tokens from your OS credential store
+> (macOS Keychain / Windows Credential Manager). Docker containers cannot access the host credential
+> store, so the token is passed via environment variable instead. The `gh auth token` command extracts
+> it for you automatically.
 
 ---
 

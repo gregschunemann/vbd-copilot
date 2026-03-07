@@ -16,6 +16,7 @@ and run automated quality review before delivering output.
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
 import time
 from pathlib import Path
@@ -115,8 +116,46 @@ async def main() -> None:
 
     # ── Client & session ──────────────────────────────────────────────────────
 
-    client = CopilotClient()
+    # Pass GITHUB_TOKEN to the SDK when set (required for Docker; on native
+    # installs the CLI reads tokens from the OS credential store automatically).
+    client_opts = {}
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if github_token:
+        client_opts["github_token"] = github_token
+    elif Path("/.dockerenv").exists() or os.environ.get("container"):
+        # Running inside Docker without a token - fail fast with clear guidance
+        ui.console.print(
+            "\n  [red bold]ERROR: GITHUB_TOKEN not set.[/red bold]\n\n"
+            "  Docker containers cannot access the host credential store\n"
+            "  (macOS Keychain / Windows Credential Manager).\n\n"
+            "  [bold]Fix:[/bold] pass your GitHub token when starting the container:\n\n"
+            "    [cyan]docker run -it --rm \\\\\n"
+            "      -e GITHUB_TOKEN=$(gh auth token) \\\\\n"
+            "      -v \"$(pwd)/outputs:/app/outputs\" \\\\\n"
+            "      vbd-copilot[/cyan]\n\n"
+            "  If [cyan]gh auth token[/cyan] fails, run [cyan]gh auth login[/cyan] first.\n"
+        )
+        return
+
+    client = CopilotClient(client_opts or None)
     await client.start()
+
+    # Inject CLI health check so UI can detect dead processes
+    def _check_cli_health() -> tuple[bool, str]:
+        proc = getattr(client, "_process", None)
+        if proc is None:
+            return False, "no CLI process found"
+        rc = proc.poll()
+        if rc is not None:
+            # Try to capture stderr
+            stderr = ""
+            rpc_client = getattr(client, "_client", None)
+            if rpc_client and hasattr(rpc_client, "get_stderr_output"):
+                stderr = rpc_client.get_stderr_output() or ""
+            return False, f"exited with code {rc}" + (f"\n  stderr: {stderr}" if stderr else "")
+        return True, f"pid={proc.pid}"
+
+    ui._cli_health_check = _check_cli_health
 
     session = None
 

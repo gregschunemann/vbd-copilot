@@ -3,7 +3,7 @@
 #
 #   docker build -t vbd-copilot .
 #   docker run -it --rm \
-#     -v ~/.copilot:/home/app/.copilot \
+#     -e GITHUB_TOKEN=$(gh auth token) \
 #     -v $(pwd)/outputs:/app/outputs \
 #     vbd-copilot
 # ──────────────────────────────────────────────────────────────────────────────
@@ -38,9 +38,9 @@ RUN mkdir -p outputs/slides outputs/demos plans && \
 USER app
 
 # ── Mount points ─────────────────────────────────────────────────────────────
-# ~/.copilot  -> /home/app/.copilot  (auth tokens - read-only is fine)
-# ./outputs   -> /app/outputs        (generated files persist on host)
-VOLUME ["/home/app/.copilot", "/app/outputs"]
+# GITHUB_TOKEN env var  (auth - passed via -e at runtime)
+# ./outputs -> /app/outputs  (generated files persist on host)
+VOLUME ["/app/outputs"]
 
 # ── Entrypoint ───────────────────────────────────────────────────────────────
 ENV PYTHONUNBUFFERED=1

@@ -11,7 +11,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -143,6 +143,9 @@ class CopilotUI:
         self._last_width: int = shutil.get_terminal_size().columns
         self._baking_task: asyncio.Task[None] | None = None
         self._baking_line_active: bool = False
+        self._last_event_time: float = 0.0  # epoch of last SDK event received
+        self._stall_warned: bool = False  # True after first stall warning
+        self._cli_health_check: Callable[[], tuple[bool, str]] | None = None  # injected by app.py
 
         HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -194,6 +197,8 @@ class CopilotUI:
             agent=self.current_agent,
             model=self.current_model,
         )
+        self._last_event_time = 0.0
+        self._stall_warned = False
         self._start_baking_indicator()
 
     def stop_agent_display(self) -> None:
@@ -215,18 +220,61 @@ class CopilotUI:
         self._clear_baking_line()
 
     async def _baking_pulse(self) -> None:
-        dots = ["\033[96m●\033[0m", "\033[90m●\033[0m"]
+        dots = ["\033[96m\u25cf\033[0m", "\033[90m\u25cf\033[0m"]
         i = 0
+        stall_threshold = 30  # seconds with no events before warning
         try:
             while self._tracker is not None:
                 if self._needs_newline or self._in_reasoning:
                     await asyncio.sleep(1.5)
                     continue
+
+                # Check for stall
+                if self._last_event_time > 0:
+                    silence = time.time() - self._last_event_time
+                elif self._tracker:
+                    silence = time.time() - self._tracker.start_time
+                else:
+                    silence = 0
+
+                if silence >= stall_threshold and not self._stall_warned:
+                    self._stall_warned = True
+                    self._clear_baking_line()
+                    self.console.print(
+                        f"\n  [yellow bold]Warning:[/yellow bold] "
+                        f"[yellow]No response from Copilot CLI for {int(silence)}s.[/yellow]"
+                    )
+                    # Run health check if available
+                    if self._cli_health_check:
+                        alive, detail = self._cli_health_check()
+                        if not alive:
+                            self.console.print(
+                                f"  [red bold]CLI process is dead:[/red bold] [red]{detail}[/red]"
+                            )
+                            self.console.print(
+                                "  [yellow]Troubleshooting:[/yellow]\n"
+                                "    1. Ensure ~/.copilot is mounted without :ro (or add copilot-pkg volume overlay)\n"
+                                "    2. Run: docker run --rm --entrypoint copilot vbd-copilot --version\n"
+                                "    3. Re-authenticate: npx @anthropic-ai/copilot auth login\n"
+                                "    4. Check architecture: docker run --rm --entrypoint uname vbd-copilot -m"
+                            )
+                        else:
+                            self.console.print(
+                                f"  [dim]CLI process is alive ({detail}). Waiting for response...[/dim]"
+                            )
+                    continue
+
                 dot = dots[i % len(dots)]
                 i += 1
-                sys.stdout.write(
-                    f"\r  {dot} VBD-Copilot is working..."
-                )
+                elapsed = int(silence) if silence > 0 else int(time.time() - (self._tracker.start_time if self._tracker else time.time()))
+                if elapsed > 10:
+                    sys.stdout.write(
+                        f"\r  {dot} VBD-Copilot is working... ({elapsed}s)"
+                    )
+                else:
+                    sys.stdout.write(
+                        f"\r  {dot} VBD-Copilot is working..."
+                    )
                 sys.stdout.flush()
                 self._baking_line_active = True
                 await asyncio.sleep(1.5)
@@ -493,6 +541,8 @@ class CopilotUI:
     def handle_event(self, event: Any) -> None:
         import json
         from copilot.generated.session_events import SessionEventType
+
+        self._last_event_time = time.time()
 
         etype = event.type
         d = event.data
