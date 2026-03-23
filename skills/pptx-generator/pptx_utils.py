@@ -14,16 +14,22 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
 from pptx.enum.shapes import MSO_SHAPE
 from collections import namedtuple
 import os
+import re
 import urllib.request
+import warnings
 
 # ═════════════════════════════════════════════════════════════
 # CONSTANTS
 # ═════════════════════════════════════════════════════════════
 
-# Microsoft Brand Colors
-MS_BLUE = RGBColor(0x00, 0x78, 0xD4)
-MS_DARK_BLUE = RGBColor(0x24, 0x3A, 0x5E)
+# ── BRAND PALETTE (use freely as accents) ──
+MS_BLUE = RGBColor(0x00, 0x78, 0xD4)           # Primary accent
+MS_DARK_BLUE = RGBColor(0x24, 0x3A, 0x5E)      # Structural / section dividers
 MS_LIGHT_BLUE = RGBColor(0x50, 0xE6, 0xFF)
+MS_BLUE_DARKER = RGBColor(0x00, 0x6C, 0xBE)    # Tonal variation of primary
+MS_ACCENT_LIGHT = RGBColor(0xCC, 0xE4, 0xFF)
+
+# ── NEUTRAL PALETTE (use freely) ──
 MS_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 MS_LIGHT_GRAY = RGBColor(0xF2, 0xF2, 0xF2)
 MS_MID_GRAY = RGBColor(0xD2, 0xD2, 0xD2)
@@ -31,14 +37,18 @@ MS_DARK_GRAY = RGBColor(0x3D, 0x3D, 0x3D)
 MS_TEXT = RGBColor(0x21, 0x21, 0x21)
 MS_TEXT_MUTED = RGBColor(0x61, 0x61, 0x61)
 MS_CALLOUT_BG = RGBColor(0xEF, 0xF6, 0xFC)
-MS_GREEN = RGBColor(0x10, 0x7C, 0x10)
-MS_ORANGE = RGBColor(0xFF, 0x8C, 0x00)
-MS_PURPLE = RGBColor(0x88, 0x1C, 0x98)
-MS_RED = RGBColor(0xD1, 0x34, 0x38)
-MS_BLUE_DARKER = RGBColor(0x00, 0x6C, 0xBE)
-MS_CODE_BG = RGBColor(0x24, 0x29, 0x2F)
-MS_CODE_TEXT = RGBColor(0xEA, 0xF0, 0xF7)
-MS_ACCENT_LIGHT = RGBColor(0xCC, 0xE4, 0xFF)
+MS_CODE_BG = RGBColor(0xF2, 0xF2, 0xF2)
+MS_CODE_TEXT = RGBColor(0x21, 0x21, 0x21)
+
+# ── SEMANTIC ONLY (reserved for meaningful status -- never for decoration) ──
+MS_GREEN = RGBColor(0x10, 0x7C, 0x10)           # Success / positive / "after"
+MS_ORANGE = RGBColor(0xFF, 0x8C, 0x00)          # Warning / caution
+MS_RED = RGBColor(0xD1, 0x34, 0x38)             # Error / critical / danger
+
+# ── DEPRECATED (kept for backward compat -- avoid in new code) ──
+MS_PURPLE = RGBColor(0x88, 0x1C, 0x98)          # DEPRECATED: use MS_DARK_BLUE
+MS_YELLOW = RGBColor(0xFF, 0xB9, 0x00)          # DEPRECATED: use MS_ORANGE
+MS_TEAL = RGBColor(0x03, 0x83, 0x87)            # DEPRECATED: use MS_BLUE_DARKER
 
 # Semantic status colors (backgrounds for callout variants)
 MS_BLUE_LIGHT_BG = RGBColor(0xDE, 0xEC, 0xF9)   # Info / highlight bg
@@ -46,8 +56,9 @@ MS_NAVY_LIGHT = RGBColor(0x2E, 0x4A, 0x6E)       # Subtle dark layering
 MS_SUCCESS_BG = RGBColor(0xDF, 0xF6, 0xDD)        # Success / positive bg
 MS_WARNING_BG = RGBColor(0xFF, 0xF4, 0xE5)        # Warning bg
 MS_ERROR_BG = RGBColor(0xFD, 0xE7, 0xE9)          # Error / negative bg
-MS_YELLOW = RGBColor(0xFF, 0xB9, 0x00)             # Accent yellow
-MS_TEAL = RGBColor(0x03, 0x83, 0x87)               # Teal accent
+
+# Tonal blue palette for multi-element differentiation (cards, layers, grids)
+TONAL_BLUES = [MS_DARK_BLUE, MS_BLUE_DARKER, MS_BLUE, MS_NAVY_LIGHT, MS_ACCENT_LIGHT]
 
 # Typography Scale (pt) -- consistent hierarchy for all text
 TEXT_DISPLAY = 46    # Hero / title slides
@@ -78,7 +89,9 @@ CONTENT_WIDTH = Inches(11.0)
 CONTENT_BOTTOM = Inches(6.8)  # above bottom bar
 
 FONT_FAMILY = "Segoe UI"
-FONT_MONO = "Cascadia Code"
+FONT_SEMIBOLD = "Segoe UI Semibold"
+FONT_LIGHT = "Segoe UI Light"
+FONT_MONO = "Courier New"
 
 # Asset paths
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
@@ -145,15 +158,9 @@ def add_top_accent_bar(slide, color=MS_BLUE, height=Inches(0.07)):
 
 
 def add_bottom_bar(slide, page_num=None, total=None):
-    """Add page number at the bottom-left. No visible line - keeps slides clean."""
-    if page_num is not None:
-        tb = slide.shapes.add_textbox(CONTENT_LEFT, Inches(7.1), Inches(2), Inches(0.3))
-        p = tb.text_frame.paragraphs[0]
-        run = p.add_run()
-        run.text = f"{page_num}" + (f" / {total}" if total else "")
-        run.font.size = Pt(10)
-        run.font.color.rgb = MS_TEXT_MUTED
-        run.font.name = FONT_FAMILY
+    """Reserved for future use. Page numbers are intentionally omitted
+    to keep slides clean for presentation delivery."""
+    pass
 
 
 def add_speaker_notes(slide, text):
@@ -215,7 +222,6 @@ def add_gradient_fill_3(shape, color_start, color_mid, color_end, angle_deg=90):
     stops[1].color.rgb = color_mid
     stops[1].position = 0.5
     # Add a third stop
-    from pptx.oxml import parse_xml
     gsLst = shape._element.spPr.find(qn('a:gradFill')).find(qn('a:gsLst'))
     gs3 = etree.SubElement(gsLst, qn('a:gs'))
     gs3.set('pos', '100000')
@@ -353,6 +359,58 @@ def ensure_contrast(text_color, bg_color, min_ratio=3.0):
 
 
 # ═════════════════════════════════════════════════════════════
+# BOLD MARKUP HELPERS
+# ═════════════════════════════════════════════════════════════
+
+_BOLD_RE = re.compile(r'\*\*(.+?)\*\*')
+
+
+def _parse_bold_markup(text):
+    """Parse ``**bold**`` markers into segments.
+
+    Returns a list of ``(text, is_bold)`` tuples.
+    Text without markers returns ``[(text, False)]``.
+
+    Example::
+
+        _parse_bold_markup("Use **Copilot** for code")
+        # -> [("Use ", False), ("Copilot", True), (" for code", False)]
+    """
+    parts = []
+    last_end = 0
+    for m in _BOLD_RE.finditer(text):
+        if m.start() > last_end:
+            parts.append((text[last_end:m.start()], False))
+        parts.append((m.group(1), True))
+        last_end = m.end()
+    if last_end < len(text):
+        parts.append((text[last_end:], False))
+    return parts or [(text, False)]
+
+
+def _add_runs_from_markup(paragraph, text, font_size, color,
+                          font_name=FONT_FAMILY, base_bold=False,
+                          italic=False):
+    """Create one or more runs on *paragraph* from text with ``**bold**`` markup.
+
+    If the text contains no ``**`` markers the result is identical to creating
+    a single run manually -- zero overhead for existing content.
+    """
+    segments = _parse_bold_markup(text)
+    runs = []
+    for seg_text, is_markup_bold in segments:
+        run = paragraph.add_run()
+        run.text = seg_text
+        run.font.size = Pt(font_size)
+        run.font.color.rgb = color
+        run.font.bold = base_bold or is_markup_bold
+        run.font.italic = italic
+        run.font.name = FONT_SEMIBOLD if (base_bold or is_markup_bold) else font_name
+        runs.append(run)
+    return runs
+
+
+# ═════════════════════════════════════════════════════════════
 # SHAPE TEXT HELPERS
 # ═════════════════════════════════════════════════════════════
 
@@ -392,13 +450,14 @@ def _set_shape_text(shape, text, font_size=14, color=MS_WHITE, bold=False,
 
     p = tf.paragraphs[0]
     p.alignment = alignment
-    run = p.add_run()
-    run.text = text
-    run.font.size = Pt(font_size)
-    run.font.color.rgb = color
-    run.font.bold = bold
-    run.font.italic = italic
-    run.font.name = font_name
+    lines = text.split('\n')
+    _add_runs_from_markup(p, lines[0], font_size, color,
+                          font_name=font_name, base_bold=bold, italic=italic)
+    for line in lines[1:]:
+        p = tf.add_paragraph()
+        p.alignment = alignment
+        _add_runs_from_markup(p, line, font_size, color,
+                              font_name=font_name, base_bold=bold, italic=italic)
     return shape
 
 
@@ -417,13 +476,8 @@ def _add_shape_paragraph(shape, text, font_size=14, color=MS_TEXT, bold=False,
         p.space_before = space_before
     if space_after is not None:
         p.space_after = space_after
-    run = p.add_run()
-    run.text = text
-    run.font.size = Pt(font_size)
-    run.font.color.rgb = color
-    run.font.bold = bold
-    run.font.italic = italic
-    run.font.name = font_name
+    _add_runs_from_markup(p, text, font_size, color,
+                          font_name=font_name, base_bold=bold, italic=italic)
     return shape
 
 
@@ -484,6 +538,137 @@ def group_shapes(slide, shapes_list):
 
 
 # ═════════════════════════════════════════════════════════════
+# NATIVE BULLET HELPERS
+# ═════════════════════════════════════════════════════════════
+
+def _set_bullet_format(paragraph, bullet_char="\u2022", bullet_color=None,
+                       bullet_font=None, bullet_size_pct=100, level=0,
+                       indent_inches=0.25, hanging_inches=0.2):
+    """Set native PowerPoint bullet formatting on a paragraph.
+
+    Uses OOXML ``a:buChar``, ``a:buClr``, ``a:buFont``, ``a:buSzPct`` elements
+    so the bullet is a real PowerPoint bullet - editable, indentable, and style-
+    changeable via the PowerPoint UI.
+
+    Args:
+        paragraph: python-pptx Paragraph object.
+        bullet_char: Unicode character for the bullet (e.g. '\\u2022', '\\u2013').
+        bullet_color: RGBColor for the bullet. None = inherit from text.
+        bullet_font: Font name for the bullet glyph. None = inherit from text.
+        bullet_size_pct: Bullet size as percentage of text size (default 100).
+        level: Indentation level 0-8 (0 = top-level).
+        indent_inches: Left margin per indent level.
+        hanging_inches: Hanging indent (bullet outdent from text).
+    """
+    from lxml import etree
+    from pptx.oxml.ns import qn
+
+    paragraph.level = level
+
+    pPr = paragraph._pPr
+    if pPr is None:
+        pPr = paragraph._p.get_or_add_pPr()
+
+    # Left margin and hanging indent (EMU)
+    mar_l = int((indent_inches * (level + 1)) * 914400)
+    indent = -int(hanging_inches * 914400)
+    pPr.set('marL', str(mar_l))
+    pPr.set('indent', str(indent))
+
+    # Remove any existing bullet elements to avoid duplicates
+    for tag in ['a:buNone', 'a:buChar', 'a:buAutoNum', 'a:buClr',
+                'a:buSzPct', 'a:buSzPts', 'a:buFont', 'a:buClrTx',
+                'a:buSzTx', 'a:buFontTx']:
+        for el in pPr.findall(qn(tag)):
+            pPr.remove(el)
+
+    # Bullet color
+    if bullet_color is not None:
+        buClr = etree.SubElement(pPr, qn('a:buClr'))
+        srgb = etree.SubElement(buClr, qn('a:srgbClr'))
+        srgb.set('val', '%02X%02X%02X' % (bullet_color[0], bullet_color[1], bullet_color[2]))
+
+    # Bullet size
+    if bullet_size_pct != 100:
+        buSzPct = etree.SubElement(pPr, qn('a:buSzPct'))
+        buSzPct.set('val', str(int(bullet_size_pct * 1000)))
+
+    # Bullet font
+    if bullet_font is not None:
+        buFont = etree.SubElement(pPr, qn('a:buFont'))
+        buFont.set('typeface', bullet_font)
+
+    # Bullet character
+    buChar = etree.SubElement(pPr, qn('a:buChar'))
+    buChar.set('char', bullet_char)
+
+
+def _suppress_bullet(paragraph):
+    """Suppress the bullet on a specific paragraph via ``a:buNone``."""
+    from lxml import etree
+    from pptx.oxml.ns import qn
+
+    pPr = paragraph._pPr
+    if pPr is None:
+        pPr = paragraph._p.get_or_add_pPr()
+
+    for tag in ['a:buChar', 'a:buAutoNum', 'a:buClr', 'a:buSzPct',
+                'a:buFont', 'a:buNone']:
+        for el in pPr.findall(qn(tag)):
+            pPr.remove(el)
+
+    etree.SubElement(pPr, qn('a:buNone'))
+
+
+def _set_autonumber_bullet(paragraph, scheme='arabicPeriod', start_at=None, level=0,
+                           bullet_color=None, indent_inches=0.25, hanging_inches=0.2):
+    """Set native PowerPoint auto-numbering on a paragraph.
+
+    scheme values: 'arabicPeriod' (1. 2. 3.), 'arabicParenR' (1) 2) 3)),
+    'alphaLcPeriod' (a. b. c.), 'alphaUcPeriod' (A. B. C.),
+    'romanLcPeriod' (i. ii. iii.).
+    """
+    from lxml import etree
+    from pptx.oxml.ns import qn
+
+    paragraph.level = level
+
+    pPr = paragraph._pPr
+    if pPr is None:
+        pPr = paragraph._p.get_or_add_pPr()
+
+    mar_l = int((indent_inches * (level + 1)) * 914400)
+    indent = -int(hanging_inches * 914400)
+    pPr.set('marL', str(mar_l))
+    pPr.set('indent', str(indent))
+
+    for tag in ['a:buNone', 'a:buChar', 'a:buAutoNum', 'a:buClr',
+                'a:buSzPct', 'a:buFont']:
+        for el in pPr.findall(qn(tag)):
+            pPr.remove(el)
+
+    if bullet_color is not None:
+        buClr = etree.SubElement(pPr, qn('a:buClr'))
+        srgb = etree.SubElement(buClr, qn('a:srgbClr'))
+        srgb.set('val', '%02X%02X%02X' % (bullet_color[0], bullet_color[1], bullet_color[2]))
+
+    buAutoNum = etree.SubElement(pPr, qn('a:buAutoNum'))
+    buAutoNum.set('type', scheme)
+    if start_at is not None:
+        buAutoNum.set('startAt', str(start_at))
+
+
+def _set_letter_spacing(run, spacing_pts):
+    """Set letter spacing (tracking) on a text run.
+
+    spacing_pts: value in hundredths of a point. Positive = expand, negative = condense.
+    Common values: 50 = airy headings, 100 = very open, -25 = tighter body.
+    """
+    rPr = run._r.get_or_add_rPr()
+    rPr.set('spc', str(int(spacing_pts)))
+
+
+# ═════════════════════════════════════════════════════════════
 # TEXT HELPERS
 # ═════════════════════════════════════════════════════════════
 
@@ -510,13 +695,8 @@ def add_textbox(slide, text, left, top, width, height,
             bodyPr.set('anchor', anchor_map.get(v_align, 't'))
     p = tf.paragraphs[0]
     p.alignment = alignment
-    run = p.add_run()
-    run.text = text
-    run.font.size = Pt(font_size)
-    run.font.color.rgb = color
-    run.font.bold = bold
-    run.font.italic = italic
-    run.font.name = font_name
+    _add_runs_from_markup(p, text, font_size, color,
+                          font_name=font_name, base_bold=bold, italic=italic)
     return tb
 
 
@@ -539,15 +719,101 @@ def add_rich_text(slide, parts, left, top, width, height,
     return tb
 
 
-def add_bullet_list(slide, items, left, top, width, height=Inches(5),
-                    font_size=14, color=MS_TEXT, spacing=Pt(8)):
-    """Add a bullet list. items = [str] or [(bold_prefix, rest_text)]."""
+def add_bullet_list(slide, items, left, top, width, height=None,
+                    font_size=14, color=MS_TEXT, spacing=Pt(8),
+                    bullet_char="\u2022", bullet_color=None):
+    """Add a native PowerPoint bullet list.
+
+    Items can be:
+        - str: plain text bullet
+        - (bold_prefix, rest_text): mixed bold/normal in one bullet
+        - (text, {"level": 1}): nested bullet (level 0-8)
+        - (bold_prefix, rest_text, {"level": 1}): bold prefix + nested
+
+    Uses real PowerPoint bullets (editable in the PPT UI, supports indent
+    handles, style changes). Wrapped lines align under text, not the bullet.
+
+    height: None = auto-size to content (recommended). Pass explicit Inches()
+            to force a fixed height.
+    bullet_color: RGBColor for bullet glyph. Default None = MS_BLUE.
+
+    Returns an ElementBox(shape, left, top, width, height) for downstream stacking.
+    """
+    if bullet_color is None:
+        bullet_color = MS_BLUE
+    if height is None:
+        width_in = float(width) / 914400.0 - 0.5  # account for bullet indent
+        height = auto_height_for_items(items, font_size, width_in,
+                                       spacing_pt=int(float(spacing) / 12700))
     tb = slide.shapes.add_textbox(left, top, width, height)
     tf = tb.text_frame
     tf.word_wrap = True
     for i, item in enumerate(items):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.space_after = spacing
+
+        # Parse item format
+        level = 0
+        opts = {}
+        if isinstance(item, tuple) and len(item) >= 2 and isinstance(item[-1], dict):
+            opts = item[-1]
+            level = opts.get("level", 0)
+            item = item[:-1]  # strip the dict
+            if len(item) == 1:
+                item = item[0]  # single string
+
+        # Set native bullet
+        _set_bullet_format(p, bullet_char=bullet_char, bullet_color=bullet_color,
+                           level=level)
+
+        if isinstance(item, tuple):
+            bold_part, rest_part = item[0], item[1]
+            r1 = p.add_run()
+            r1.text = bold_part
+            r1.font.size = Pt(font_size)
+            r1.font.color.rgb = MS_DARK_BLUE
+            r1.font.bold = True
+            r1.font.name = FONT_FAMILY
+            r2 = p.add_run()
+            r2.text = rest_part
+            r2.font.size = Pt(font_size)
+            r2.font.color.rgb = color
+            r2.font.name = FONT_FAMILY
+        else:
+            _add_runs_from_markup(p, str(item), font_size, color)
+    return ElementBox(tb, left, top, width, height)
+
+
+def add_numbered_list(slide, items, left, top, width, height=None,
+                      font_size=14, color=MS_TEXT, spacing=Pt(8),
+                      scheme='arabicPeriod', number_color=None):
+    """Add a native PowerPoint auto-numbered list.
+
+    Uses real auto-numbering (1. 2. 3.) that renumbers automatically when
+    items are added/removed in PowerPoint.
+
+    height: None = auto-size to content (recommended). Pass explicit Inches()
+            to force a fixed height.
+    scheme: 'arabicPeriod' (1. 2. 3.), 'arabicParenR' (1) 2) 3)),
+            'alphaLcPeriod' (a. b. c.), 'alphaUcPeriod' (A. B. C.),
+            'romanLcPeriod' (i. ii. iii.)
+    items: [str, ...] or [(bold_prefix, rest_text), ...].
+
+    Returns an ElementBox(shape, left, top, width, height) for downstream stacking.
+    """
+    if number_color is None:
+        number_color = MS_BLUE
+    if height is None:
+        width_in = float(width) / 914400.0 - 0.5
+        height = auto_height_for_items(items, font_size, width_in,
+                                       spacing_pt=int(float(spacing) / 12700))
+    tb = slide.shapes.add_textbox(left, top, width, height)
+    tf = tb.text_frame
+    tf.word_wrap = True
+    for i, item in enumerate(items):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.space_after = spacing
+        _set_autonumber_bullet(p, scheme=scheme, bullet_color=number_color)
         if isinstance(item, tuple):
             bold_part, rest_part = item
             r1 = p.add_run()
@@ -562,12 +828,8 @@ def add_bullet_list(slide, items, left, top, width, height=Inches(5),
             r2.font.color.rgb = color
             r2.font.name = FONT_FAMILY
         else:
-            r = p.add_run()
-            r.text = item
-            r.font.size = Pt(font_size)
-            r.font.color.rgb = color
-            r.font.name = FONT_FAMILY
-    return tb
+            _add_runs_from_markup(p, str(item), font_size, color)
+    return ElementBox(tb, left, top, width, height)
 
 
 def add_gradient_textbox(slide, text, left, top, width, height,
@@ -764,9 +1026,11 @@ def add_header_card(slide, left, top, width, height, header_text, color,
     body_shape = add_rounded_card(slide, left, body_top, width, body_height,
                                   fill=MS_WHITE, border=None, corner_radius=0.0)
     # 3. Header text
-    add_textbox(slide, header_text, left + Inches(0.15), top + Inches(0.05),
+    header_tb = add_textbox(slide, header_text, left + Inches(0.15), top + Inches(0.05),
                 width - Inches(0.3), header_height,
-                font_size=15, color=MS_WHITE, bold=True, alignment=PP_ALIGN.CENTER)
+                font_size=15, color=MS_WHITE, bold=True, alignment=PP_ALIGN.CENTER,
+                shrink_to_fit=True)
+    group_shapes(slide, [header_shape, body_shape, header_tb])
     return header_shape, body_shape
 
 
@@ -836,6 +1100,7 @@ def add_progress_bar(slide, left, top, width, height=Inches(0.18),
 
     progress: 0.0 to 1.0 (percentage complete).
     Optionally shows percentage text and/or label.
+    Returns ElementBox for vertical chaining.
 
     Example::
         add_progress_bar(slide, x, y, Inches(4), progress=0.85, label="Adoption")
@@ -857,19 +1122,27 @@ def add_progress_bar(slide, left, top, width, height=Inches(0.18),
         add_textbox(slide, pct_text, left + width + Inches(0.1), top - Inches(0.01),
                     Inches(0.5), height,
                     font_size=TEXT_CAPTION, color=MS_TEXT, bold=True)
-    return fill_bar
+    return ElementBox(fill_bar, left, top, width, height)
 
 
-def add_checklist(slide, items, left, top, width, height=Inches(5),
+def add_checklist(slide, items, left, top, width, height=None,
                   font_size=13, check_color=MS_GREEN, spacing=Pt(10)):
-    """Add a checklist with checkmark symbols.
+    """Add a checklist with native PowerPoint bullet characters.
 
     items = [str] for all checked, or [(str, bool)] for mixed checked/unchecked.
 
-    The checkmark style uses Unicode symbols with color coding:
-        Checked:   green checkmark
-        Unchecked: gray circle
+    height: None = auto-size to content (recommended).
+
+    Uses native ``a:buChar`` bullets so checkmarks are real bullet glyphs:
+        Checked:   green checkmark (\\u2713)
+        Unchecked: gray circle (\\u25CB)
+
+    Returns an ElementBox(shape, left, top, width, height).
     """
+    if height is None:
+        width_in = float(width) / 914400.0 - 0.4
+        height = auto_height_for_items(items, font_size, width_in,
+                                       spacing_pt=int(float(spacing) / 12700))
     tb = slide.shapes.add_textbox(left, top, width, height)
     tf = tb.text_frame
     tf.word_wrap = True
@@ -883,21 +1156,16 @@ def add_checklist(slide, items, left, top, width, height=Inches(5),
         else:
             text, checked = item, True
 
-        # Checkmark/circle symbol
-        r_icon = p.add_run()
-        r_icon.text = "\u2713 " if checked else "\u25CB "
-        r_icon.font.size = Pt(font_size)
-        r_icon.font.color.rgb = check_color if checked else MS_MID_GRAY
-        r_icon.font.bold = True
-        r_icon.font.name = FONT_FAMILY
+        # Native bullet: checkmark or circle glyph
+        b_char = "\u2713" if checked else "\u25CB"
+        b_color = check_color if checked else MS_MID_GRAY
+        _set_bullet_format(p, bullet_char=b_char, bullet_color=b_color,
+                           bullet_size_pct=110)
 
         # Item text
-        r_text = p.add_run()
-        r_text.text = text
-        r_text.font.size = Pt(font_size)
-        r_text.font.color.rgb = MS_TEXT if checked else MS_TEXT_MUTED
-        r_text.font.name = FONT_FAMILY
-    return tb
+        _add_runs_from_markup(p, text, font_size,
+                              MS_TEXT if checked else MS_TEXT_MUTED)
+    return ElementBox(tb, left, top, width, height)
 
 
 def add_gradient_card(slide, left, top, width, height, color_start, color_end,
@@ -942,18 +1210,12 @@ def add_gradient_card(slide, left, top, width, height, color_start, color_end,
 #   Pass 3: for item in items: draw_text(...)
 
 
-def estimate_text_height(text, font_size_pt, width_inches, padding_inches=0.22,
-                          line_spacing_factor=1.45, min_lines=1):
+def estimate_text_height(text, font_size_pt, width_inches, padding_inches=0.20,
+                          line_spacing_factor=1.3, min_lines=1):
     """Estimate the Inches height needed to display text at font_size_pt in width_inches.
 
-    Uses a character-width heuristic (Segoe UI) with a safety multiplier.
+    Uses a character-width heuristic (Segoe UI).
     Returns an Inches() EMU value ready to pass directly to shape constructors.
-
-    Changes from earlier version:
-        - Wider character estimate (0.58 vs 0.50) to avoid underflow.
-        - min_lines parameter to guarantee minimum height.
-        - Handles long unbreakable tokens (URLs, identifiers).
-        - 10% safety margin on final result.
 
     Example::
         h = estimate_text_height(long_note, 13, 10.0)
@@ -983,7 +1245,81 @@ def estimate_text_height(text, font_size_pt, width_inches, padding_inches=0.22,
     lines = max(lines, min_lines)
     line_h = (font_size_pt * line_spacing_factor) / 72.0
     raw = lines * line_h + padding_inches
-    return Inches(raw * 1.10)  # 10% safety margin
+    return Inches(raw)
+
+
+# Minimum readable width for auto-computed card widths in grids
+MIN_CARD_WIDTH = Inches(1.5)
+
+
+def _compute_total_height(n, item_h, gap):
+    """Compute total height consumed by n vertically stacked items with gaps.
+
+    Returns an EMU value (same type as Inches()) for direct use in positioning.
+    """
+    if n <= 0:
+        return 0
+    return n * item_h + (n - 1) * gap
+
+
+def _validate_bounds(left, top, width, height, context=""):
+    """Warn if a shape would extend beyond slide boundaries.
+
+    Emits a warning (not an exception) so decorative elements that
+    intentionally bleed off-slide are tolerated while accidental
+    overflow is surfaced during development.
+    """
+    right = left + width
+    bottom = top + height
+    slide_w = int(SLIDE_WIDTH)
+    slide_h = int(SLIDE_HEIGHT)
+    tolerance = Inches(0.15)
+
+    if right > slide_w + tolerance:
+        warnings.warn(
+            f"pptx_utils: shape extends beyond slide right edge "
+            f"(right={float(right)/914400:.2f}\", slide_w={float(slide_w)/914400:.2f}\") "
+            f"[{context}]",
+            stacklevel=3,
+        )
+    if bottom > slide_h + tolerance:
+        warnings.warn(
+            f"pptx_utils: shape extends beyond slide bottom edge "
+            f"(bottom={float(bottom)/914400:.2f}\", slide_h={float(slide_h)/914400:.2f}\") "
+            f"[{context}]",
+            stacklevel=3,
+        )
+
+
+def auto_height_for_items(items, font_size, width_inches, spacing_pt=8,
+                          padding_inches=0.2):
+    """Calculate minimum container height for a list of text items.
+
+    Uses estimate_text_height per item plus inter-item spacing.
+    Returns an Inches() EMU value.
+    """
+    if not items:
+        return Inches(padding_inches)
+    total = 0.0
+    spacing_inches = spacing_pt / 72.0
+    for item in items:
+        text = item if isinstance(item, str) else str(item[0] if isinstance(item, tuple) else item)
+        h_emu = estimate_text_height(text, font_size, width_inches, padding_inches=0.05)
+        total += float(h_emu) / 914400.0
+    total += (len(items) - 1) * spacing_inches + padding_inches
+    return Inches(total)
+
+
+def remaining_height(from_top, bottom=CONTENT_BOTTOM):
+    """Return available height from from_top to the content bottom boundary.
+
+    Use to check how much vertical space is left before placing an element::
+
+        eb = add_bullet_list(slide, items, left, top, width)
+        avail = remaining_height(eb.top + eb.height)
+        # avail is the EMU space left before CONTENT_BOTTOM
+    """
+    return int(bottom) - int(from_top)
 
 
 # ═════════════════════════════════════════════════════════════
@@ -994,31 +1330,35 @@ def add_callout_box(slide, text, left, top, width, height=None,
                     bg=MS_CALLOUT_BG, accent=MS_BLUE, font_size=13):
     """Add a callout box with a left accent bar, auto-sized to content.
 
+    Use ``\\n`` in the text to put each sentence on its own line::
+
+        add_callout_box(slide,
+            "First point.\\nSecond point.\\nThird point.",
+            left, top, width)
+
     When height is None (default) the box height is calculated from the text
     length, font_size, and width so the box is exactly as tall as it needs to
-    be -- no awkward empty space. Pass an explicit Inches() to force a fixed
-    height.
+    be. Pass an explicit Inches() to force a fixed height.
 
-    Returns the actual height used so callers can chain vertical positions::
-
-        h = add_callout_box(slide, text1, left, top, width)
-        add_callout_box(slide, text2, left, top + h + Inches(0.15), width)
+    Returns an ElementBox for vertical chaining.
     """
     if height is None:
         height = estimate_text_height(
             text, font_size,
             float(width) / 914400 - 0.45,  # account for 0.3+0.15 text inset
-            padding_inches=0.25,
+            padding_inches=0.18,
+            line_spacing_factor=1.2,
         )
-    # Background with embedded text (single selectable unit in PowerPoint)
     card = add_rounded_card(slide, left, top, width, height, fill=bg, border=None,
                             corner_radius=0.04)
-    add_rect(slide, left, top, Pt(5), height, accent)
+    add_shadow(card, blur_pt=2, offset_pt=1, opacity=0.08)  # subtle paper shadow
+    accent_bar = add_rect(slide, left, top, Pt(5), height, accent)
     _set_shape_text(card, text, font_size=font_size, color=MS_DARK_BLUE, bold=True,
                     alignment=PP_ALIGN.LEFT, v_align='top',
                     margin_left=Inches(0.3), margin_right=Inches(0.15),
-                    margin_top=Inches(0.1), margin_bottom=Inches(0.05))
-    return height
+                    margin_top=Inches(0.08), margin_bottom=Inches(0.08))
+    group_shapes(slide, [card, accent_bar])
+    return ElementBox(card, left, top, width, height)
 
 
 def add_warning_box(slide, text, left, top, width, height=None):
@@ -1027,19 +1367,82 @@ def add_warning_box(slide, text, left, top, width, height=None):
                            bg=RGBColor(0xFF, 0xF4, 0xE5), accent=MS_ORANGE)
 
 
-def add_code_block(slide, code, left, top, width, height):
-    """Add a dark-themed code block with a monospace font and blue left border."""
-    # Dark background with embedded code text (single unit in PowerPoint)
-    bg = add_rect(slide, left, top, width, height, MS_CODE_BG)
-    bg.shadow.inherit = False
+def add_code_block(slide, code, left, top, width, height=None, language=""):
+    """Add a light-themed code block with rounded corners and blue left border.
+
+    height: None = auto-size to content (recommended). Pass explicit Inches()
+            to force a fixed height.
+    language: optional label (e.g. 'Python', 'YAML') shown in a subtle top bar.
+    All sub-shapes are auto-grouped.
+
+    Returns an ElementBox(shape, left, top, width, height) for downstream stacking.
+    """
+    if height is None:
+        # Auto-compute height from code content
+        code_font = 10
+        mono_char_w = (code_font * 0.62) / 72.0  # monospace is wider than proportional
+        width_in = float(width) / 914400.0 - 0.3  # account for left+right margins
+        chars_per_line = max(10, int(width_in / mono_char_w))
+        line_count = 0
+        for line in code.split('\n'):
+            line_count += max(1, -(-len(line) // chars_per_line))  # ceil division
+        # Line height: 10pt Courier New with forced single (100%) line spacing
+        # 10pt = 0.139" + font descenders/ascenders = ~0.22" per line.
+        text_h = line_count * 0.25
+        margin_top_in = 0.18 if language else 0.08
+        margin_h = margin_top_in + 0.08
+        height = Inches(text_h + margin_h)
+    shapes_to_group = []
+    # Rounded dark background
+    bg = add_rounded_card(slide, left, top, width, height, fill=MS_CODE_BG,
+                          border=None, corner_radius=0.04)
+    shapes_to_group.append(bg)
     # Blue left accent
-    add_rect(slide, left, top, Pt(4), height, MS_BLUE)
-    # Code text embedded in background shape
-    _set_shape_text(bg, code, font_size=10, color=MS_CODE_TEXT, bold=False,
-                    font_name=FONT_MONO, alignment=PP_ALIGN.LEFT, v_align='top',
-                    margin_left=Inches(0.2), margin_right=Inches(0.1),
-                    margin_top=Inches(0.1), margin_bottom=Inches(0.05))
-    return bg
+    accent = add_rect(slide, left, top, Pt(4), height, MS_BLUE)
+    shapes_to_group.append(accent)
+    # Optional language label in top-right
+    if language:
+        lang_tb = add_textbox(slide, language,
+                              left + width - Inches(1.2), top + Inches(0.04),
+                              Inches(1.1), Inches(0.25),
+                              font_size=8, color=MS_TEXT_MUTED,
+                              font_name=FONT_MONO, alignment=PP_ALIGN.RIGHT)
+        shapes_to_group.append(lang_tb)
+    # Code text -- split into separate paragraphs per line so PowerPoint
+    # correctly measures line count for auto-sizing and text-to-fit.
+    code_top_margin = Inches(0.03)
+    tf = bg.text_frame
+    tf.word_wrap = True
+    tf.margin_left = Inches(0.2)
+    tf.margin_right = Inches(0.1)
+    tf.margin_top = int(code_top_margin)
+    tf.margin_bottom = Inches(0.03)
+    tf.auto_size = MSO_AUTO_SIZE.NONE  # we size the shape ourselves
+
+    from lxml import etree
+    from pptx.oxml.ns import qn
+
+    code_lines = code.split('\n')
+    for i, line in enumerate(code_lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.alignment = PP_ALIGN.LEFT
+        p.space_before = Pt(0)
+        p.space_after = Pt(0)
+        # Force single line spacing (100%) -- PowerPoint defaults to 115%
+        pPr = p._p.get_or_add_pPr()
+        for old_lnSpc in pPr.findall(qn('a:lnSpc')):
+            pPr.remove(old_lnSpc)
+        lnSpc = etree.SubElement(pPr, qn('a:lnSpc'))
+        spcPct = etree.SubElement(lnSpc, qn('a:spcPct'))
+        spcPct.set('val', '100000')
+        run = p.add_run()
+        run.text = line if line else " "  # empty lines need a space to render
+        run.font.size = Pt(10)
+        run.font.color.rgb = MS_CODE_TEXT
+        run.font.bold = False
+        run.font.name = FONT_MONO
+    group_shapes(slide, shapes_to_group)
+    return ElementBox(bg, left, top, width, height)
 
 
 def add_styled_table(slide, data, left, top, width, col_widths=None,
@@ -1062,18 +1465,18 @@ def add_styled_table(slide, data, left, top, width, col_widths=None,
             cell = table.cell(ri, ci)
             cell.text = ""
             p = cell.text_frame.paragraphs[0]
-            run = p.add_run()
-            run.text = str(val)
-            run.font.name = FONT_FAMILY
-            run.font.size = Pt(font_size if ri > 0 else font_size + 1)
             p.alignment = PP_ALIGN.LEFT
             if ri == 0:
+                run = p.add_run()
+                run.text = str(val)
+                run.font.name = FONT_FAMILY
+                run.font.size = Pt(font_size + 1)
                 run.font.bold = True
                 run.font.color.rgb = MS_WHITE
                 cell.fill.solid()
                 cell.fill.fore_color.rgb = header_color
             else:
-                run.font.color.rgb = MS_TEXT
+                _add_runs_from_markup(p, str(val), font_size, MS_TEXT)
                 cell.fill.solid()
                 cell.fill.fore_color.rgb = MS_CALLOUT_BG if ri % 2 == 0 else MS_WHITE
             cell.margin_left = Inches(0.08)
@@ -1083,7 +1486,7 @@ def add_styled_table(slide, data, left, top, width, col_widths=None,
     return ts
 
 
-def add_metric_card(slide, metric, label, x, y, w=Inches(3.5), h=Inches(2.5),
+def add_metric_card(slide, metric, label, left, top, width=Inches(3.5), height=Inches(2.5),
                     color=MS_BLUE, sublabel="", trend="", trend_positive=True):
     """Add a single big-number metric card.
 
@@ -1094,17 +1497,18 @@ def add_metric_card(slide, metric, label, x, y, w=Inches(3.5), h=Inches(2.5),
            a green up-arrow or red down-arrow based on trend_positive.
 
     Example::
-        add_metric_card(slide, "98.5%", "Uptime SLA", x, y,
+        add_metric_card(slide, "98.5%", "Uptime SLA", left, top,
                         trend="+0.3%", trend_positive=True)
     """
-    card = add_elevated_card(slide, x, y, w, h, fill=MS_WHITE,
+    card = add_elevated_card(slide, left, top, width, height, fill=MS_WHITE,
                              border=color, shadow="subtle")
-    add_rect(slide, x, y, w, Inches(0.06), color)
-    # All text embedded in card with proportional spacing
-    h_emu = int(h)
+    accent_bar = add_rect(slide, left, top, width, Inches(0.06), color)
+    # All text embedded in card with proportional spacing and shrink-to-fit
+    h_emu = int(height)
     _set_shape_text(card, str(metric),
                     font_size=40, color=color, bold=True,
                     alignment=PP_ALIGN.CENTER, v_align='middle',
+                    shrink_to_fit=True,
                     margin_left=Inches(0.1), margin_right=Inches(0.1),
                     margin_top=int(h_emu * 0.06), margin_bottom=int(h_emu * 0.08))
     _add_shape_paragraph(card, label,
@@ -1123,53 +1527,81 @@ def add_metric_card(slide, metric, label, x, y, w=Inches(3.5), h=Inches(2.5),
                              font_size=TEXT_BODY_SM, color=t_color, bold=True,
                              alignment=PP_ALIGN.CENTER,
                              space_before=Pt(4))
-    return card
+    group_shapes(slide, [card, accent_bar])
+    return ElementBox(card, left, top, width, height)
 
 
 def add_numbered_items(slide, items, left, top, width, item_height=Inches(1.1),
                        colors=None):
-    """Add numbered items with colored circles. items = [(title, desc)]."""
+    """Add numbered items with colored circles. items = [(title, desc)].
+
+    Returns an ElementBox(shape, left, top, width, total_height).
+    """
     if colors is None:
-        colors = [MS_BLUE, MS_DARK_BLUE, MS_GREEN, MS_ORANGE, MS_PURPLE] * 3
+        colors = [MS_BLUE, MS_BLUE_DARKER, MS_DARK_BLUE] * 5
+    total_h = _compute_total_height(len(items), item_height, 0)
+    _validate_bounds(left, top, width, total_h, "add_numbered_items")
+    last_shape = None
     for i, (title, desc) in enumerate(items):
         y = top + i * item_height
         c = colors[i % len(colors)]
         bg_color = MS_LIGHT_GRAY if i % 2 == 0 else MS_WHITE
         ih = int(item_height)
         card_h = item_height - Inches(0.05)
-        add_rounded_card(slide, left, y, width, card_h,
+        last_shape = add_rounded_card(slide, left, y, width, card_h,
                          fill=bg_color, border=MS_MID_GRAY)
         add_rect(slide, left, y, Pt(5), card_h, c)
-        # Proportional positions (scale with item_height)
-        add_icon_circle(slide, left + Inches(0.2), y + int(ih * 0.08),
+        # Icon circle vertically centered at top region of card
+        circle_y = y + int(ih * 0.15)
+        add_icon_circle(slide, left + Inches(0.2), circle_y,
                         Inches(0.5), c, str(i + 1))
-        add_textbox(slide, title, left + Inches(0.9), y + int(ih * 0.03),
-                    width - Inches(1.1), int(ih * 0.35),
-                    font_size=15, color=MS_DARK_BLUE, bold=True)
-        add_textbox(slide, desc, left + Inches(0.9), y + int(ih * 0.38),
-                    width - Inches(1.1), int(ih * 0.55),
-                    font_size=12, color=MS_TEXT_MUTED)
+        # Title starts after the circle (no overlap)
+        add_textbox(slide, title, left + Inches(0.9), y + int(ih * 0.08),
+                    width - Inches(1.1), int(ih * 0.45),
+                    font_size=14, color=MS_DARK_BLUE, bold=True,
+                    shrink_to_fit=True)
+        # Description below title
+        add_textbox(slide, desc, left + Inches(0.9), y + int(ih * 0.52),
+                    width - Inches(1.1), int(ih * 0.44),
+                    font_size=12, color=MS_TEXT_MUTED,
+                    shrink_to_fit=True)
+    return ElementBox(last_shape, left, top, width, total_h)
 
 
-def add_card_grid(slide, cards, left, top, cols=2, card_w=Inches(5.5),
+def add_card_grid(slide, cards, left, top, cols=2, card_w=Inches(5.3),
                   card_h=Inches(2.3), gap_x=Inches(0.35), gap_y=Inches(0.35)):
-    """Add cards in a grid. cards = [(color, title, desc), ...]."""
+    """Add cards in a grid. cards = [(color, title, desc), ...].
+
+    Each card's sub-shapes are auto-grouped into a single unit in PowerPoint.
+    Returns an ElementBox(shape, left, top, total_width, total_height).
+    """
+    rows = (len(cards) + cols - 1) // cols
+    total_w = cols * card_w + (cols - 1) * gap_x
+    total_h = _compute_total_height(rows, card_h, gap_y)
+    _validate_bounds(left, top, total_w, total_h, "add_card_grid")
+    last_shape = None
     for i, (color, title, desc) in enumerate(cards):
         col = i % cols
         row = i // cols
         x = left + col * (card_w + gap_x)
         y = top + row * (card_h + gap_y)
         ch = int(card_h)  # EMU for proportional offsets
-        add_rounded_card(slide, x, y, card_w, card_h, fill=color, border=MS_MID_GRAY)
-        add_rounded_card(slide, x, y + Inches(0.08), card_w, card_h - Inches(0.08),
+        s1 = add_rounded_card(slide, x, y, card_w, card_h, fill=color, border=MS_MID_GRAY)
+        s2 = add_rounded_card(slide, x, y + Inches(0.08), card_w, card_h - Inches(0.08),
                          fill=MS_WHITE, border=MS_MID_GRAY)
-        add_icon_circle(slide, x + Inches(0.25), y + int(ch * 0.13), Inches(0.5), color, str(i + 1))
-        add_textbox(slide, title, x + Inches(0.95), y + int(ch * 0.10),
+        s3 = add_icon_circle(slide, x + Inches(0.25), y + int(ch * 0.13), Inches(0.5), color, str(i + 1))
+        # Title starts below the icon center (no overlap with circle)
+        s4 = add_textbox(slide, title, x + Inches(0.95), y + int(ch * 0.13),
                     card_w - Inches(1.2), int(ch * 0.18),
-                    font_size=16, color=MS_DARK_BLUE, bold=True)
-        add_textbox(slide, desc, x + Inches(0.95), y + int(ch * 0.30),
-                    card_w - Inches(1.2), int(ch * 0.65),
-                    font_size=12, color=MS_TEXT_MUTED)
+                    font_size=16, color=MS_DARK_BLUE, bold=True,
+                    shrink_to_fit=True)
+        s5 = add_textbox(slide, desc, x + Inches(0.95), y + int(ch * 0.33),
+                    card_w - Inches(1.2), int(ch * 0.60),
+                    font_size=12, color=MS_TEXT_MUTED,
+                    shrink_to_fit=True)
+        last_shape = s1
+        group_shapes(slide, [s1, s2, s3, s4, s5])
+    return ElementBox(last_shape, left, top, total_w, total_h)
 
 
 def add_pillar_cards(slide, pillars, left=CONTENT_LEFT, top=CONTENT_TOP, height=Inches(5.2),
@@ -1180,9 +1612,18 @@ def add_pillar_cards(slide, pillars, left=CONTENT_LEFT, top=CONTENT_TOP, height=
     so the cards never overflow regardless of how tall or short they are.
 
     pillars = [(color, num, title, desc), ...].
+    Returns an ElementBox(shape, left, top, width, height).
     """
     n = len(pillars)
     card_w = (CONTENT_WIDTH - (n - 1) * min_gap) / n
+    if card_w < MIN_CARD_WIDTH:
+        warnings.warn(
+            f"pptx_utils: pillar card width ({float(card_w)/914400:.2f}\") is below "
+            f"minimum readable width ({float(MIN_CARD_WIDTH)/914400:.2f}\"). "
+            f"Consider reducing the number of pillars (currently {n}).",
+            stacklevel=2,
+        )
+    _validate_bounds(left, top, CONTENT_WIDTH, height, "add_pillar_cards")
     h = float(height)  # EMU
     # Proportional breakpoints (fraction of total card height)
     circle_r   = Inches(0.4)
@@ -1199,10 +1640,13 @@ def add_pillar_cards(slide, pillars, left=CONTENT_LEFT, top=CONTENT_TOP, height=
         add_icon_circle(slide, x + card_w / 2 - circle_r, circle_top, circle_r * 2, color, num)
         add_textbox(slide, title_text, x + Inches(0.1), title_top,
                     card_w - Inches(0.2), title_h,
-                    font_size=15, color=MS_DARK_BLUE, bold=True, alignment=PP_ALIGN.CENTER)
+                    font_size=15, color=MS_DARK_BLUE, bold=True, alignment=PP_ALIGN.CENTER,
+                    shrink_to_fit=True)
         add_textbox(slide, desc, x + Inches(0.1), desc_top,
                     card_w - Inches(0.2), desc_h,
-                    font_size=11, color=MS_TEXT_MUTED, alignment=PP_ALIGN.CENTER)
+                    font_size=11, color=MS_TEXT_MUTED, alignment=PP_ALIGN.CENTER,
+                    shrink_to_fit=True)
+    return ElementBox(None, left, top, CONTENT_WIDTH, height)
 
 
 def add_quote_block(slide, quote, attribution="", left=CONTENT_LEFT, top=Inches(2.0),
@@ -1220,9 +1664,9 @@ def add_quote_block(slide, quote, attribution="", left=CONTENT_LEFT, top=Inches(
     q_height = estimate_text_height(quote, 20, float(width) / 914400 - 1.0)
     total_h = q_height + (Inches(0.5) if attribution else Inches(0.1))
 
-    # White card with shadow for elevation
+    # Light blue card with shadow for elevation
     card = add_elevated_card(slide, left, top, width, total_h + Inches(0.4),
-                             fill=MS_WHITE, border=MS_LIGHT_GRAY, shadow="subtle")
+                             fill=MS_CALLOUT_BG, border=MS_LIGHT_GRAY, shadow="subtle")
     # Left accent bar
     add_rect(slide, left, top, Pt(5), total_h + Inches(0.4), accent_color)
     # Opening quote mark (large, decorative)
@@ -1232,14 +1676,16 @@ def add_quote_block(slide, quote, attribution="", left=CONTENT_LEFT, top=Inches(
     # Quote text
     add_textbox(slide, quote, left + Inches(0.8), top + Inches(0.15),
                 width - Inches(1.2), q_height,
-                font_size=20, color=MS_DARK_BLUE, italic=True)
+                font_size=20, color=MS_DARK_BLUE, italic=True,
+                shrink_to_fit=True)
     # Attribution
     if attribution:
         add_textbox(slide, attribution, left + Inches(0.8),
                     top + q_height + Inches(0.15),
                     width - Inches(1.2), Inches(0.35),
                     font_size=TEXT_BODY_SM, color=MS_TEXT_MUTED, bold=True)
-    return card
+    card_height = total_h + Inches(0.4)
+    return ElementBox(card, left, top, width, card_height)
 
 
 def add_stats_row(slide, stats, left=CONTENT_LEFT, top=Inches(1.8),
@@ -1262,6 +1708,13 @@ def add_stats_row(slide, stats, left=CONTENT_LEFT, top=Inches(1.8),
         width = CONTENT_WIDTH
     n = len(stats)
     card_w = (width - (n - 1) * gap) / n
+    if card_w < MIN_CARD_WIDTH:
+        warnings.warn(
+            f"pptx_utils: stats card width ({float(card_w)/914400:.2f}\") is below "
+            f"minimum readable width. Consider reducing items (currently {n}).",
+            stacklevel=2,
+        )
+    _validate_bounds(left, top, width, card_h, "add_stats_row")
 
     cards = []
     for i, stat in enumerate(stats):
@@ -1288,14 +1741,14 @@ def add_stats_row(slide, stats, left=CONTENT_LEFT, top=Inches(1.8),
                              alignment=PP_ALIGN.CENTER,
                              space_before=Pt(4))
         cards.append(card)
-    return cards
+    return ElementBox(cards[0] if cards else None, left, top, width, card_h)
 
 
 def add_kpi_card(slide, value, label, trend="", trend_positive=True,
-                 x=CONTENT_LEFT, y=Inches(2.0), w=Inches(2.8), h=Inches(2.2),
-                 color=MS_BLUE):
+                 left=CONTENT_LEFT, top=Inches(2.0), width=Inches(3.5),
+                 height=Inches(2.5), color=MS_BLUE):
     """Alias for add_metric_card with trend support. Prefer add_metric_card directly."""
-    return add_metric_card(slide, value, label, x, y, w, h, color,
+    return add_metric_card(slide, value, label, left, top, width, height, color,
                            trend=trend, trend_positive=trend_positive)
 
 
@@ -1338,6 +1791,7 @@ def add_comparison_columns(slide, col_left, col_right,
     vs_x = left + col_w + gap / 2 - Inches(0.25)
     vs_y = top + Inches(0.1)
     add_icon_circle(slide, vs_x, vs_y, Inches(0.5), MS_DARK_BLUE, "VS")
+    return ElementBox(None, left, top, width, height)
 
 
 def add_feature_grid(slide, features, left=CONTENT_LEFT, top=CONTENT_TOP,
@@ -1359,8 +1813,18 @@ def add_feature_grid(slide, features, left=CONTENT_LEFT, top=CONTENT_TOP,
     """
     if card_w is None:
         card_w = (CONTENT_WIDTH - (cols - 1) * gap) / cols
+    if card_w < MIN_CARD_WIDTH:
+        warnings.warn(
+            f"pptx_utils: feature card width ({float(card_w)/914400:.2f}\") is below "
+            f"minimum readable width. Consider reducing cols (currently {cols}).",
+            stacklevel=2,
+        )
 
     default_colors = [MS_BLUE, MS_DARK_BLUE, MS_GREEN, MS_ORANGE, MS_PURPLE, MS_RED]
+    rows = (len(features) + cols - 1) // cols
+    total_w = cols * card_w + (cols - 1) * gap
+    total_h = _compute_total_height(rows, card_h, gap)
+    _validate_bounds(left, top, total_w, total_h, "add_feature_grid")
 
     for i, feat in enumerate(features):
         title = feat[0]
@@ -1384,17 +1848,20 @@ def add_feature_grid(slide, features, left=CONTENT_LEFT, top=CONTENT_TOP,
         # Title
         add_textbox(slide, title, x + Inches(0.65), y + int(ch * 0.08),
                     card_w - Inches(0.85), int(ch * 0.22),
-                    font_size=TEXT_BODY, color=MS_DARK_BLUE, bold=True)
+                    font_size=TEXT_BODY, color=MS_DARK_BLUE, bold=True,
+                    shrink_to_fit=True)
         # Description
         add_textbox(slide, desc, x + Inches(0.15), y + int(ch * 0.38),
                     card_w - Inches(0.3), int(ch * 0.55),
-                    font_size=TEXT_BODY_SM, color=MS_TEXT_MUTED)
+                    font_size=TEXT_BODY_SM, color=MS_TEXT_MUTED,
+                    shrink_to_fit=True)
+    return ElementBox(None, left, top, total_w, total_h)
 
 
 def add_colored_columns(slide, columns, left=CONTENT_LEFT, top=CONTENT_TOP,
                         width=None, gap=Inches(0.3), title_font_size=TEXT_H3,
                         body_font_size=TEXT_BODY_SM, bullet_symbol="\u00B7 ",
-                        gradient_titles=True):
+                        gradient_titles=True, max_height=None):
     """Add side-by-side columns with colored bold titles and bullet lists.
 
     A lightweight alternative to add_header_card_with_bullets -- no card
@@ -1406,6 +1873,11 @@ def add_colored_columns(slide, columns, left=CONTENT_LEFT, top=CONTENT_TOP,
     gradient_titles: if True (default) and color is a single RGBColor, a lighter
         variant is automatically derived for a subtle gradient. Pass a tuple of
         two RGBColor values for explicit control.
+    max_height: maximum total height (EMU/Inches). When set, the bullet
+        textboxes are clamped so the element never exceeds this height.
+        Shrink-to-fit is enabled on clamped textboxes so text auto-scales
+        in PowerPoint rather than overflowing. Default None = slide-aware
+        auto-clamp to ``SLIDE_HEIGHT - top - Inches(0.5)``.
 
     Example::
         add_colored_columns(slide, [
@@ -1423,6 +1895,13 @@ def add_colored_columns(slide, columns, left=CONTENT_LEFT, top=CONTENT_TOP,
         width = CONTENT_WIDTH
     n = len(columns)
     col_w = (width - (n - 1) * gap) / n
+
+    # Compute the maximum bullets height allowed
+    title_h = Inches(0.65)
+    if max_height is None:
+        max_bullets_h = int(SLIDE_HEIGHT) - int(top) - int(title_h) - int(Inches(0.5))
+    else:
+        max_bullets_h = int(max_height) - int(title_h)
 
     for i, (title, items, color) in enumerate(columns):
         x = left + i * (col_w + gap)
@@ -1445,30 +1924,40 @@ def add_colored_columns(slide, columns, left=CONTENT_LEFT, top=CONTENT_TOP,
             add_textbox(slide, title, x, top, col_w, Inches(0.6),
                         font_size=title_font_size, color=c_start, bold=True)
 
-        # Bullet list
-        bullets_top = top + Inches(0.65)
-        bullets_h = Inches(4.5)
+        # Bullet list with native bullets
+        bullets_top = top + title_h
+        bullets_h = auto_height_for_items(items, body_font_size,
+                                          float(col_w) / 914400.0 - 0.3)
+        clamped = int(bullets_h) > max_bullets_h > 0
+        if clamped:
+            bullets_h = max_bullets_h
         tb = slide.shapes.add_textbox(x, bullets_top, col_w, bullets_h)
         tf = tb.text_frame
         tf.word_wrap = True
+        if clamped:
+            tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
         for j, item in enumerate(items):
             p = tf.paragraphs[0] if j == 0 else tf.add_paragraph()
             p.space_after = Pt(6)
-            run = p.add_run()
-            run.text = f"{bullet_symbol}{item}"
-            run.font.size = Pt(body_font_size)
-            run.font.color.rgb = MS_TEXT
-            run.font.name = FONT_FAMILY
+            _set_bullet_format(p, bullet_char=bullet_symbol, bullet_color=c_start,
+                               indent_inches=0.18, hanging_inches=0.15)
+            _add_runs_from_markup(p, item, body_font_size, MS_TEXT)
+    total_h = title_h + bullets_h
+    return ElementBox(None, left, top, width, total_h)
 
 
 def add_layered_architecture(slide, layers, left=CONTENT_LEFT, top=Inches(1.5),
-                             width=None, layer_h=Inches(0.9), gap=Inches(0.08)):
+                             width=None, layer_h=Inches(0.9), gap=Inches(0.08),
+                             font_size=TEXT_BODY, alignment=PP_ALIGN.LEFT):
     """Add a horizontal layered architecture diagram (stacked bars).
 
     layers = [(label, color), ...] ordered top-to-bottom.
     Creates a classic architecture stack diagram where each layer spans
     the full width, perfect for showing technology stacks, OSI layers,
     or platform architectures.
+
+    font_size: text size in pt (default TEXT_BODY = 14pt).
+    alignment: PP_ALIGN.LEFT (default) or PP_ALIGN.CENTER.
 
     Example::
         add_layered_architecture(slide, [
@@ -1480,6 +1969,8 @@ def add_layered_architecture(slide, layers, left=CONTENT_LEFT, top=Inches(1.5),
     """
     if width is None:
         width = CONTENT_WIDTH
+    total_h = _compute_total_height(len(layers), layer_h, gap)
+    _validate_bounds(left, top, width, total_h, "add_layered_architecture")
 
     for i, (label, color) in enumerate(layers):
         y = top + i * (layer_h + gap)
@@ -1489,10 +1980,11 @@ def add_layered_architecture(slide, layers, left=CONTENT_LEFT, top=Inches(1.5),
                                 corner_radius=0.03, shadow="paper")
         # Label text embedded in bar (auto contrast)
         text_color = auto_text_color(color)
-        _set_shape_text(bar, label, font_size=TEXT_H3, color=text_color, bold=True,
-                        alignment=PP_ALIGN.CENTER, v_align='middle',
+        _set_shape_text(bar, label, font_size=font_size, color=text_color, bold=True,
+                        alignment=alignment, v_align='middle',
                         margin_left=Inches(0.3), margin_right=Inches(0.3),
                         margin_top=Inches(0.05), margin_bottom=Inches(0.05))
+    return ElementBox(None, left, top, width, total_h)
 
 
 def add_agenda_list(slide, items, left=CONTENT_LEFT, top=Inches(1.5),
@@ -1517,28 +2009,33 @@ def add_agenda_list(slide, items, left=CONTENT_LEFT, top=Inches(1.5),
         width = CONTENT_WIDTH
     item_h = Inches(0.7)
     gap = Inches(0.08)
+    total_h = _compute_total_height(len(items), item_h, gap)
+    _validate_bounds(left, top, width, total_h, "add_agenda_list")
 
     for i, item in enumerate(items):
         y = top + i * (item_h + gap)
         is_active = (i == highlight_index)
 
         # Background card
-        bg_color = MS_BLUE if is_active else MS_LIGHT_GRAY
-        text_color = MS_WHITE if is_active else MS_TEXT
-        num_bg = MS_DARK_BLUE if is_active else MS_MID_GRAY
+        bg_color = MS_BLUE if is_active else MS_CALLOUT_BG
+        text_color = MS_WHITE if is_active else MS_DARK_BLUE
+        num_bg = MS_DARK_BLUE if is_active else MS_BLUE
+        num_text = MS_WHITE
 
-        card = add_rounded_card(slide, left, y, width, item_h,
-                                fill=bg_color, border=None, corner_radius=0.04)
-        if is_active:
-            add_shadow(card, blur_pt=4, offset_pt=2, opacity=0.15)
+        card = add_elevated_card(slide, left, y, width, item_h,
+                                 fill=bg_color,
+                                 border=MS_ACCENT_LIGHT if not is_active else None,
+                                 corner_radius=0.04,
+                                 shadow="subtle" if is_active else "paper")
 
         # Number circle
         add_icon_circle(slide, left + Inches(0.15), y + Inches(0.1),
-                        Inches(0.5), num_bg, str(i + 1))
+                        Inches(0.5), num_bg, str(i + 1), text_color=num_text)
         # Text
         add_textbox(slide, item, left + Inches(0.8), y + Inches(0.1),
                     width - Inches(1.0), item_h - Inches(0.2),
                     font_size=TEXT_H3, color=text_color, bold=is_active)
+    return ElementBox(None, left, top, width, total_h)
 
 
 def add_icon_row(slide, items, left=CONTENT_LEFT, top=Inches(2.5),
@@ -1561,6 +2058,12 @@ def add_icon_row(slide, items, left=CONTENT_LEFT, top=Inches(2.5),
         width = CONTENT_WIDTH
     n = len(items)
     slot_w = width / n
+    if slot_w < MIN_CARD_WIDTH:
+        warnings.warn(
+            f"pptx_utils: icon slot width ({float(slot_w)/914400:.2f}\") is below "
+            f"minimum readable width. Consider reducing items (currently {n}).",
+            stacklevel=2,
+        )
     default_colors = [MS_BLUE, MS_DARK_BLUE, MS_GREEN, MS_ORANGE, MS_PURPLE, MS_RED]
 
     for i, item in enumerate(items):
@@ -1574,6 +2077,8 @@ def add_icon_row(slide, items, left=CONTENT_LEFT, top=Inches(2.5),
                     slot_w, Inches(0.5),
                     font_size=TEXT_BODY_SM, color=MS_DARK_BLUE, bold=True,
                     alignment=PP_ALIGN.CENTER)
+    total_h = icon_size + Inches(0.6)
+    return ElementBox(None, left, top, width, total_h)
 
 
 def add_pricing_table(slide, tiers, left=CONTENT_LEFT, top=Inches(1.3),
@@ -1597,6 +2102,7 @@ def add_pricing_table(slide, tiers, left=CONTENT_LEFT, top=Inches(1.3),
     n = len(tiers)
     gap = Inches(0.2)
     col_w = (width - (n - 1) * gap) / n
+    _validate_bounds(left, top, width, height, "add_pricing_table")
 
     for i, (name, price, features, color) in enumerate(tiers):
         x = left + i * (col_w + gap)
@@ -1637,6 +2143,7 @@ def add_pricing_table(slide, tiers, left=CONTENT_LEFT, top=Inches(1.3),
         add_checklist(slide, features, x + Inches(0.2), feat_top,
                       col_w - Inches(0.4), font_size=TEXT_BODY_SM,
                       check_color=color)
+    return ElementBox(None, left, top, width, height)
 
 
 def add_swot_grid(slide, strengths, weaknesses, opportunities, threats,
@@ -1669,6 +2176,7 @@ def add_swot_grid(slide, strengths, weaknesses, opportunities, threats,
         add_header_card_with_bullets(slide, title, items,
                                     qx, qy, cell_w, cell_h,
                                     header_color=color, font_size=TEXT_BODY_SM)
+    return ElementBox(None, left, top, width, height)
 
 
 def add_maturity_model(slide, levels, current_level=None,
@@ -1693,6 +2201,7 @@ def add_maturity_model(slide, levels, current_level=None,
     """
     if width is None:
         width = CONTENT_WIDTH
+    _validate_bounds(left, top, width, height, "add_maturity_model")
     n = len(levels)
     step_w = width / n
     step_base_h = height * 0.25  # minimum height for lowest step
@@ -1727,6 +2236,7 @@ def add_maturity_model(slide, levels, current_level=None,
                         step_w - Inches(0.16), step_h - Inches(1.0),
                         font_size=TEXT_CAPTION, color=desc_c,
                         alignment=PP_ALIGN.CENTER)
+    return ElementBox(None, left, top, width, height)
 
 
 def add_roadmap(slide, phases, left=CONTENT_LEFT, top=Inches(2.0),
@@ -1751,6 +2261,9 @@ def add_roadmap(slide, phases, left=CONTENT_LEFT, top=Inches(2.0),
     n = len(phases)
     gap = Inches(0.15)
     phase_w = (width - (n - 1) * gap) / n
+    max_items_count = max(len(p[1]) for p in phases) if phases else 0
+    preview_h = max(phase_h, Inches(0.6) + Inches(0.3) * max_items_count + Inches(0.2))
+    _validate_bounds(left, top, width, preview_h, "add_roadmap")
 
     for i, (label, items, color) in enumerate(phases):
         x = left + i * (phase_w + gap)
@@ -1768,28 +2281,35 @@ def add_roadmap(slide, phases, left=CONTENT_LEFT, top=Inches(2.0),
             add_arrow_right(slide, arrow_x, arrow_y,
                             width=gap - Inches(0.04), height=Inches(0.4),
                             color=color)
+    max_items_h = max(len(p[1]) for p in phases) if phases else 0
+    total_h = max(phase_h, Inches(0.6) + Inches(0.3) * max_items_h + Inches(0.2))
+    return ElementBox(None, left, top, width, total_h)
 
 
 # ═════════════════════════════════════════════════════════════
 # SLIDE TEMPLATES
 # ═════════════════════════════════════════════════════════════
 
-def create_standard_slide(prs, title, page_num=None, total=None, notes=""):
-    """Create a standard content slide with title, blue underline, logo, bottom bar.
+def create_standard_slide(prs, title, page_num=None, total=None, notes="",
+                         title_font_size=28):
+    """Create a standard content slide with title, logo, bottom bar.
 
-    No top accent bar -- the title underline is the sole brand accent. This gives
-    content slides a cleaner, more editorial feel and avoids the heavy banner that
-    competes visually with the main content area.
+    Clean editorial feel -- title in a lighter blue shade with no underline,
+    letting the content area breathe.
+
+    title_font_size: font size for the title (default 28pt). Reduce for longer titles.
 
     Returns the slide for adding content below the title (CONTENT_TOP = 1.2").
     """
     slide = new_blank_slide(prs)
     set_slide_bg(slide, MS_WHITE)
-    # Title (moved up slightly since there is no top bar)
-    add_textbox(slide, title, CONTENT_LEFT, Inches(0.2), CONTENT_WIDTH, Inches(0.7),
-                font_size=28, color=MS_DARK_BLUE, bold=True)
-    # Blue underline -- the primary brand accent on content slides
-    add_rect(slide, CONTENT_LEFT, Inches(0.95), CONTENT_WIDTH, Pt(3), MS_BLUE)
+    # Title with Semibold weight for professional feel
+    title_h = estimate_text_height(title, title_font_size, float(CONTENT_WIDTH) / 914400 - 0.2,
+                                   padding_inches=0.1, min_lines=1)
+    title_h = max(title_h, Inches(0.5))
+    tb = add_textbox(slide, title, CONTENT_LEFT, Inches(0.2), CONTENT_WIDTH, title_h,
+                font_size=title_font_size, color=MS_BLUE, bold=True,
+                font_name=FONT_SEMIBOLD, shrink_to_fit=True)
     add_bottom_bar(slide, page_num, total)
     add_ms_logo(slide)
     if notes:
@@ -1809,9 +2329,14 @@ def create_section_divider(prs, title, subtitle="", notes=""):
     c1.fill.solid(); c1.fill.fore_color.rgb = RGBColor(0x2E, 0x4A, 0x6E); c1.line.fill.background()
     c2 = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(10), Inches(5.8), Inches(1.5), Inches(1.5))
     c2.fill.solid(); c2.fill.fore_color.rgb = RGBColor(0x2E, 0x4A, 0x6E); c2.line.fill.background()
-    # Title
-    add_textbox(slide, title, Inches(1.0), Inches(2.5), Inches(10), Inches(1.2),
-                font_size=44, color=MS_WHITE, bold=True)
+    # Title - Light weight for elegant section dividers
+    tb = add_textbox(slide, title, Inches(1.0), Inches(2.5), Inches(10), Inches(1.2),
+                font_size=44, color=MS_WHITE, bold=False,
+                font_name=FONT_LIGHT, shrink_to_fit=True)
+    # Add letter spacing for airy display feel
+    for p in tb.text_frame.paragraphs:
+        for run in p.runs:
+            _set_letter_spacing(run, 50)
     if subtitle:
         add_textbox(slide, subtitle, Inches(1.0), Inches(4.1), Inches(9), Inches(0.8),
                     font_size=18, color=MS_ACCENT_LIGHT)
@@ -1870,9 +2395,13 @@ def create_lead_slide(prs, title, subtitle="", meta="", notes="",
 
     # Logo top-left
     add_ms_logo(slide, left=Inches(0.6), top=Inches(0.5), width=Inches(1.6))
-    # Title
-    add_textbox(slide, title, Inches(0.8), Inches(2.0), Inches(7), Inches(1.8),
-                font_size=46, color=MS_DARK_BLUE, bold=True)
+    # Title - Light weight for premium lead style
+    tb = add_textbox(slide, title, Inches(0.8), Inches(2.0), Inches(7), Inches(1.8),
+                font_size=46, color=MS_DARK_BLUE, bold=False,
+                font_name=FONT_LIGHT, shrink_to_fit=True)
+    for p in tb.text_frame.paragraphs:
+        for run in p.runs:
+            _set_letter_spacing(run, 50)
     if subtitle:
         add_textbox(slide, subtitle, Inches(0.8), Inches(4.2), Inches(7), Inches(0.6),
                     font_size=20, color=MS_BLUE)
@@ -1886,8 +2415,19 @@ def create_lead_slide(prs, title, subtitle="", meta="", notes="",
 
 def create_closing_slide(prs, title="Key Takeaways", takeaways=None,
                          cta_title="", cta_url="", cta_items=None,
-                         page_num=None, total=None, notes=""):
-    """Create a split closing slide: blue left (takeaways) + white right (CTA)."""
+                         page_num=None, total=None, notes="",
+                         title_font_size=30, title_height=None):
+    """Create a split closing slide: blue left (takeaways) + white right (CTA).
+
+    title_font_size: font size for the left-panel title (default 30pt).
+        Reduce to 22-24pt for longer titles to avoid overflow.
+    title_height: height of the title textbox. Default None = auto-computed
+        from title_font_size to fit ~2 lines.
+    """
+    if title_height is None:
+        title_height = estimate_text_height(title, title_font_size, 3.6,
+                                            padding_inches=0.1, min_lines=1)
+        title_height = max(title_height, Inches(0.6))  # minimum height
     slide = new_blank_slide(prs)
     set_slide_bg(slide, MS_WHITE)
     # Blue band left
@@ -1895,39 +2435,79 @@ def create_closing_slide(prs, title="Key Takeaways", takeaways=None,
     c = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(-1.5), Inches(4.8), Inches(3.5), Inches(3.5))
     c.fill.solid(); c.fill.fore_color.rgb = MS_DARK_BLUE; c.line.fill.background()
     # Left title
-    add_textbox(slide, title, Inches(0.6), Inches(0.6), Inches(4), Inches(0.6),
-                font_size=30, color=MS_WHITE, bold=True)
-    # Blue underline below title
-    add_rect(slide, Inches(0.6), Inches(1.2), Inches(2.2), Pt(3), MS_WHITE)
-    # Takeaways
+    add_textbox(slide, title, Inches(0.6), Inches(0.6), Inches(4), title_height,
+                font_size=title_font_size, color=MS_WHITE, bold=True)
+    # Blue underline below title (positioned after title box)
+    underline_y = Inches(0.6) + title_height + Inches(0.05)
+    add_rect(slide, Inches(0.6), underline_y, Inches(2.2), Pt(3), MS_WHITE)
+    # Takeaways (auto-space to fit above logo at y=6.5")
+    takeaways_top = underline_y + Inches(0.25)
     if takeaways:
-        for i, t in enumerate(takeaways):
-            y = Inches(1.5) + i * Inches(1.3)
-            add_icon_circle(slide, Inches(0.6), y, Inches(0.4), MS_DARK_BLUE, str(i + 1))
-            add_textbox(slide, t, Inches(1.2), y - Inches(0.05), Inches(3.5), Inches(1.1),
-                        font_size=12, color=RGBColor(0xDD, 0xEE, 0xFF))
-    add_ms_logo(slide, left=Inches(1.5), top=Inches(6.5), width=Inches(1.3))
+        max_items = min(len(takeaways), 4)
+        available_h = float(Inches(6.5) - takeaways_top - Inches(0.4))
+        takeaway_font = 11
+        text_w_in = 3.5 - 0.3  # text width minus margins
+        # Compute proportional heights based on actual text length
+        raw_heights = []
+        for i in range(max_items):
+            h = float(estimate_text_height(takeaways[i], takeaway_font, text_w_in,
+                                           padding_inches=0.12))
+            raw_heights.append(h)
+        total_raw = sum(raw_heights)
+        # Scale proportionally to fit available space
+        if total_raw > available_h:
+            scale = available_h / total_raw
+            heights = [h * scale for h in raw_heights]
+        else:
+            heights = raw_heights
+        y = float(takeaways_top)
+        for i in range(max_items):
+            t = takeaways[i]
+            item_h = heights[i]
+            circle_y = int(y + item_h * 0.15)
+            add_icon_circle(slide, Inches(0.6), circle_y, Inches(0.4), MS_DARK_BLUE, str(i + 1))
+            add_textbox(slide, t, Inches(1.2), int(y), Inches(3.5), int(item_h),
+                        font_size=takeaway_font, color=RGBColor(0xDD, 0xEE, 0xFF),
+                        shrink_to_fit=True)
+            y += item_h
+    add_ms_logo(slide)
     # Right side
+    right_left = Inches(5.8)
+    right_width = SLIDE_WIDTH - right_left - Inches(0.5)  # 0.5" right margin
     if cta_title:
-        add_textbox(slide, cta_title, Inches(5.8), Inches(1.2), Inches(6.5), Inches(1.2),
-                    font_size=32, color=MS_DARK_BLUE, bold=True)
+        add_textbox(slide, cta_title, right_left, Inches(1.2), right_width, Inches(1.2),
+                    font_size=32, color=MS_DARK_BLUE, bold=True,
+                    shrink_to_fit=True)
     if cta_url:
-        add_textbox(slide, cta_url, Inches(5.8), Inches(2.5), Inches(6.5), Inches(0.35),
-                    font_size=14, color=MS_BLUE)
+        add_textbox(slide, cta_url, right_left, Inches(2.5), right_width, Inches(0.35),
+                    font_size=14, color=MS_BLUE, shrink_to_fit=True)
     if cta_items:
+        n_cta = len(cta_items)
+        cta_gap = Inches(0.15)
+        card_w = (right_width - (n_cta - 1) * cta_gap) / n_cta
+        card_w = min(card_w, Inches(2.5))  # cap max width
+        card_h = Inches(1.7)
+        cards_top = Inches(3.1)
         for i, item in enumerate(cta_items):
             if isinstance(item, str):
                 big, small = item, ""
             else:
                 big, small = item[0], item[1] if len(item) > 1 else ""
-            x = Inches(5.8) + Inches(i * 2.35)
-            add_rounded_card(slide, x, Inches(3.1), Inches(2.1), Inches(1.7),
+            x = right_left + i * (card_w + cta_gap)
+            add_rounded_card(slide, x, cards_top, card_w, card_h,
                              fill=MS_WHITE, border=MS_BLUE)
-            add_textbox(slide, big, x + Inches(0.1), Inches(3.2), Inches(1.9), Inches(0.8),
-                        font_size=18, color=MS_BLUE, bold=True, alignment=PP_ALIGN.CENTER)
-            add_textbox(slide, small, x + Inches(0.1), Inches(4.05), Inches(1.9), Inches(0.4),
-                        font_size=11, color=MS_TEXT_MUTED, alignment=PP_ALIGN.CENTER)
-    add_textbox(slide, "Questions?", Inches(5.8), Inches(5.5), Inches(6.5), Inches(0.5),
+            add_textbox(slide, big, x + Inches(0.08), cards_top + Inches(0.1),
+                        card_w - Inches(0.16), Inches(0.8),
+                        font_size=18, color=MS_BLUE, bold=True,
+                        alignment=PP_ALIGN.CENTER, shrink_to_fit=True)
+            add_textbox(slide, small, x + Inches(0.08), cards_top + Inches(0.95),
+                        card_w - Inches(0.16), Inches(0.55),
+                        font_size=11, color=MS_TEXT_MUTED,
+                        alignment=PP_ALIGN.CENTER, shrink_to_fit=True)
+        questions_y = cards_top + card_h + Inches(0.3)
+    else:
+        questions_y = Inches(5.5)
+    add_textbox(slide, "Questions?", right_left, questions_y, right_width, Inches(0.5),
                 font_size=26, color=MS_DARK_BLUE, bold=True)
     add_bottom_bar(slide, page_num, total)
     if notes:
@@ -1967,7 +2547,8 @@ def create_two_tone_slide(prs, title, left_color=MS_DARK_BLUE, right_color=MS_WH
     # Title on left panel
     add_textbox(slide, title, Inches(0.5), Inches(0.5),
                 left_w - Inches(0.8), Inches(1.0),
-                font_size=TEXT_H1, color=MS_WHITE, bold=True)
+                font_size=TEXT_H1, color=MS_WHITE, bold=True,
+                shrink_to_fit=True)
     # White underline
     add_rect(slide, Inches(0.5), Inches(1.55), Inches(2.0), Pt(3), MS_WHITE)
 
@@ -1999,7 +2580,8 @@ def create_gradient_slide(prs, title, color_start=MS_BLUE, color_end=MS_DARK_BLU
 
     # Title
     add_textbox(slide, title, CONTENT_LEFT, Inches(0.4), CONTENT_WIDTH, Inches(0.8),
-                font_size=TEXT_H1, color=MS_WHITE, bold=True)
+                font_size=TEXT_H1, color=MS_WHITE, bold=True,
+                shrink_to_fit=True)
     # White underline
     add_rect(slide, CONTENT_LEFT, Inches(1.2), Inches(3.0), Pt(3), MS_WHITE)
 
@@ -2046,11 +2628,15 @@ def create_impact_slide(prs, headline, subtext="", stats=None,
     bg = add_rect(slide, Inches(0), Inches(0), SLIDE_WIDTH, SLIDE_HEIGHT, MS_BLUE)
     add_gradient_fill(bg, MS_DARK_BLUE, MS_BLUE, angle_deg=135)
 
-    # Headline (centered, large)
-    add_textbox(slide, headline, Inches(1.0), Inches(2.0),
+    # Headline (centered, large, Light weight for impact)
+    tb = add_textbox(slide, headline, Inches(1.0), Inches(2.0),
                 Inches(11.333), Inches(2.0),
-                font_size=TEXT_DISPLAY, color=MS_WHITE, bold=True,
-                alignment=PP_ALIGN.CENTER)
+                font_size=TEXT_DISPLAY, color=MS_WHITE, bold=False,
+                font_name=FONT_LIGHT, alignment=PP_ALIGN.CENTER,
+                shrink_to_fit=True)
+    for p in tb.text_frame.paragraphs:
+        for run in p.runs:
+            _set_letter_spacing(run, 80)
     if subtext:
         add_textbox(slide, subtext, Inches(1.5), Inches(4.2),
                     Inches(10.333), Inches(0.8),
@@ -2135,27 +2721,32 @@ def add_blue_speech_panel(slide, text, left, top, width, height,
     Unlike add_callout_box (light background, dark text), this is a
     high-contrast branded panel for key statements.
 
-    Returns the background shape.
+    Returns ElementBox for vertical chaining.
     """
     text_color = ensure_contrast(text_color, bg_color)
     card = add_rounded_card(slide, left, top, width, height,
                             fill=bg_color, border=None, corner_radius=0.04)
+    shapes_to_group = [card]
     if accent_bar:
-        add_rect(slide, left, top, Pt(5), height, MS_DARK_BLUE)
+        bar = add_rect(slide, left, top, Pt(5), height, MS_DARK_BLUE)
+        shapes_to_group.append(bar)
     _set_shape_text(card, text, font_size=font_size, color=text_color, bold=False,
                     alignment=PP_ALIGN.LEFT, v_align='middle',
+                    shrink_to_fit=True,
                     margin_left=Inches(0.25), margin_right=Inches(0.15),
                     margin_top=Inches(0.15), margin_bottom=Inches(0.1))
-    return card
+    if len(shapes_to_group) > 1:
+        group_shapes(slide, shapes_to_group)
+    return ElementBox(card, left, top, width, height)
 
 
 def add_header_card_with_bullets(slide, header_text, bullets, left, top, width, height,
                                  header_color=MS_BLUE, header_height=Inches(0.5),
-                                 font_size=11, bullet_symbol="\u2022 "):
-    """Add a card with a colored header banner and bulleted body content.
+                                 font_size=11, bullet_symbol="\u2022"):
+    """Add a card with a colored header banner and native-bulleted body.
 
-    Extends the add_header_card pattern with built-in bullet list rendering.
-    Matches the style from "Measure Adoption" slide (screenshot 3).
+    Extends the add_header_card pattern with real PowerPoint bullets.
+    Bullets are editable, indentable, and style-changeable in the PPT UI.
 
     bullets = [str, ...] -- each string is one bullet point.
     Returns (header_shape, body_shape, textbox).
@@ -2170,21 +2761,20 @@ def add_header_card_with_bullets(slide, header_text, bullets, left, top, width, 
         slide, left, top, width, height, header_text, header_color,
         header_height=header_height)
 
-    # Build bullet text inside body
+    # Build bullet text inside body with native bullets
     body_top = top + header_height + Inches(0.12)
     body_h = height - header_height - Inches(0.2)
     tb = slide.shapes.add_textbox(left + Inches(0.15), body_top,
                                   width - Inches(0.3), body_h)
     tf = tb.text_frame
     tf.word_wrap = True
+    tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     for i, item in enumerate(bullets):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.space_after = Pt(4)
-        run = p.add_run()
-        run.text = f"{bullet_symbol}{item}"
-        run.font.size = Pt(font_size)
-        run.font.color.rgb = MS_TEXT
-        run.font.name = FONT_FAMILY
+        _set_bullet_format(p, bullet_char=bullet_symbol, bullet_color=header_color,
+                           indent_inches=0.18, hanging_inches=0.15)
+        _add_runs_from_markup(p, item, font_size, MS_TEXT)
     return header_shape, body_shape, tb
 
 
@@ -2212,6 +2802,8 @@ def add_timeline(slide, phases, left=CONTENT_LEFT, top=Inches(1.3),
     n = len(phases)
     gap = Inches(0.15)
     box_w = (available_width - (n - 1) * gap) / n
+    total_h = box_height + Inches(0.08) + Inches(0.05) + Inches(0.35) + desc_height
+    _validate_bounds(left, top, available_width, total_h, "add_timeline")
     connector_y = top + box_height + Inches(0.08)
     week_y = connector_y + Inches(0.05)
     desc_y = week_y + Inches(0.35)
@@ -2254,7 +2846,7 @@ def add_timeline(slide, phases, left=CONTENT_LEFT, top=Inches(1.3),
                     Inches(0.4), box_height,
                     font_size=20, color=MS_BLUE, bold=True)
 
-    return shapes
+    return ElementBox(shapes[0] if shapes else None, left, top, available_width, total_h)
 
 
 def add_activity_bars(slide, activities, left=CONTENT_LEFT, top=Inches(5.8),
@@ -2274,6 +2866,8 @@ def add_activity_bars(slide, activities, left=CONTENT_LEFT, top=Inches(5.8),
         width = CONTENT_WIDTH
     if colors is None:
         colors = [MS_DARK_BLUE, MS_BLUE, MS_BLUE_DARKER, MS_GREEN, MS_PURPLE]
+    total_h = _compute_total_height(len(activities), bar_height, gap)
+    _validate_bounds(left, top, width, total_h, "add_activity_bars")
     bars = []
     for i, text in enumerate(activities):
         y = top + i * (bar_height + gap)
@@ -2285,7 +2879,7 @@ def add_activity_bars(slide, activities, left=CONTENT_LEFT, top=Inches(5.8),
                         margin_left=Inches(0.2), margin_right=Inches(0.2),
                         margin_top=Inches(0.02), margin_bottom=Inches(0.02))
         bars.append(bar)
-    return bars
+    return ElementBox(bars[0] if bars else None, left, top, width, total_h)
 
 
 def add_process_flow(slide, steps, left=CONTENT_LEFT, top=Inches(2.0),
@@ -2309,6 +2903,7 @@ def add_process_flow(slide, steps, left=CONTENT_LEFT, top=Inches(2.0),
         colors = [palette[i % len(palette)] for i in range(n)]
 
     total_w = n * box_w + (n - 1) * arrow_w
+    _validate_bounds(left, top, total_w, box_h, "add_process_flow")
     start_x = left + (CONTENT_WIDTH - total_w) / 2  # center the flow
 
     boxes = []
@@ -2341,7 +2936,8 @@ def add_process_flow(slide, steps, left=CONTENT_LEFT, top=Inches(2.0),
                             ax, top + box_h + Inches(0.3), box_w,
                             font_size=12, color=MS_TEXT_MUTED)
 
-    return boxes
+    anno_h = Inches(1.3) if annotations else 0
+    return ElementBox(boxes[0] if boxes else None, left, top, total_w, box_h + anno_h)
 
 
 def add_process_flow_grouped(slide, steps, group_range=None, group_label="",
@@ -2395,6 +2991,271 @@ def add_process_flow_grouped(slide, steps, group_range=None, group_label="",
     boxes = add_process_flow(slide, steps, left, top, box_w, box_h,
                              arrow_w, colors, annotations)
     return boxes, group_shape
+
+
+# ═════════════════════════════════════════════════════════════
+# NEW PRIMITIVES
+# ═════════════════════════════════════════════════════════════
+
+def add_image_card(slide, image_path, left, top, width, height,
+                   caption="", border_color=None, corner_radius=0.05,
+                   shadow="subtle"):
+    """Add a rounded card containing an image with optional caption.
+
+    Handles sizing consistently - the image fills the card area (minus caption
+    space). If the image file doesn't exist, a placeholder card is shown.
+
+    Args:
+        image_path: path to image file (.png, .jpg).
+        caption: optional text below the image.
+        border_color: RGBColor for card border, or None.
+        shadow: elevation preset or None.
+    """
+    caption_h = Inches(0.4) if caption else 0
+    img_h = height - caption_h
+
+    shapes_to_group = []
+
+    # Card background
+    card = add_elevated_card(slide, left, top, width, height,
+                             fill=MS_WHITE, border=border_color,
+                             corner_radius=corner_radius,
+                             shadow=shadow)
+    shapes_to_group.append(card)
+
+    # Image (or placeholder)
+    img_margin = Inches(0.08)
+    if os.path.exists(image_path):
+        try:
+            pic = slide.shapes.add_picture(
+                image_path,
+                left + img_margin, top + img_margin,
+                width - 2 * img_margin, img_h - 2 * img_margin)
+            shapes_to_group.append(pic)
+        except Exception:
+            # Fallback placeholder
+            ph = add_rect(slide, left + img_margin, top + img_margin,
+                          width - 2 * img_margin, img_h - 2 * img_margin,
+                          MS_LIGHT_GRAY)
+            _set_shape_text(ph, "[Image]", font_size=TEXT_BODY_SM,
+                            color=MS_TEXT_MUTED, alignment=PP_ALIGN.CENTER)
+            shapes_to_group.append(ph)
+    else:
+        ph = add_rect(slide, left + img_margin, top + img_margin,
+                      width - 2 * img_margin, img_h - 2 * img_margin,
+                      MS_LIGHT_GRAY)
+        _set_shape_text(ph, "[Image]", font_size=TEXT_BODY_SM,
+                        color=MS_TEXT_MUTED, alignment=PP_ALIGN.CENTER)
+        shapes_to_group.append(ph)
+
+    # Caption
+    if caption:
+        cap_tb = add_textbox(slide, caption,
+                             left + Inches(0.1), top + img_h,
+                             width - Inches(0.2), caption_h,
+                             font_size=TEXT_CAPTION, color=MS_TEXT_MUTED,
+                             alignment=PP_ALIGN.CENTER)
+        shapes_to_group.append(cap_tb)
+
+    group_shapes(slide, shapes_to_group)
+    return card
+
+
+def add_hyperlink(run, url):
+    """Make a text run clickable, linking to a URL.
+
+    Works on any python-pptx Run object. The run text is preserved;
+    the hyperlink is added as a native PowerPoint clickable link.
+
+    Example::
+        tb = add_textbox(slide, "Visit docs", x, y, w, h, color=MS_BLUE)
+        add_hyperlink(tb.text_frame.paragraphs[0].runs[0],
+                      "https://learn.microsoft.com")
+    """
+    from pptx.oxml.ns import qn
+    from lxml import etree
+
+    rPr = run._r.get_or_add_rPr()
+
+    # Remove existing hyperlink if any
+    for old in rPr.findall(qn('a:hlinkClick')):
+        rPr.remove(old)
+
+    # Get the slide part for relationship management
+    slide_part = run._r.getroottree().getroot()
+    # Walk up to find the slide part
+    part = None
+    el = run._r
+    while el is not None:
+        if hasattr(el, 'part'):
+            part = el.part
+            break
+        el = el.getparent()
+
+    if part is None:
+        return run
+
+    # Add external relationship
+    rel_id = part.relate_to(url, 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink',
+                            is_external=True)
+
+    hlinkClick = etree.SubElement(rPr, qn('a:hlinkClick'))
+    hlinkClick.set(qn('r:id'), rel_id)
+
+    # Style as link (blue, underline)
+    run.font.color.rgb = MS_BLUE
+    run.font.underline = True
+
+    return run
+
+
+def set_shape_transparency(shape, alpha_pct):
+    """Set fill transparency on a shape.
+
+    alpha_pct: 0 = fully opaque (default), 100 = fully transparent.
+
+    Example::
+        overlay = add_rect(slide, 0, 0, SLIDE_WIDTH, SLIDE_HEIGHT, MS_DARK_BLUE)
+        set_shape_transparency(overlay, 40)  # 40% transparent
+    """
+    from lxml import etree
+    from pptx.oxml.ns import qn
+
+    # Transparency is stored as alpha on the fill color
+    spPr = shape._element.spPr
+    solidFill = spPr.find(qn('a:solidFill'))
+    if solidFill is not None:
+        srgbClr = solidFill.find(qn('a:srgbClr'))
+        if srgbClr is not None:
+            # Remove existing alpha
+            for a in srgbClr.findall(qn('a:alpha')):
+                srgbClr.remove(a)
+            # alpha value: 100000 = fully opaque, 0 = fully transparent
+            alpha_val = int((100 - alpha_pct) * 1000)
+            alpha = etree.SubElement(srgbClr, qn('a:alpha'))
+            alpha.set('val', str(alpha_val))
+    return shape
+
+
+def add_bar_chart(slide, data, left, top, width, height,
+                  chart_title="", colors=None):
+    """Add a styled bar chart using python-pptx's native chart support.
+
+    data = {
+        "categories": ["Q1", "Q2", "Q3", "Q4"],
+        "series": [
+            ("Revenue", [100, 120, 140, 160]),
+            ("Costs",   [80, 85, 90, 95]),
+        ]
+    }
+    colors: list of RGBColor per series. Defaults to Microsoft brand palette.
+    """
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+
+    chart_data = CategoryChartData()
+    chart_data.categories = data["categories"]
+    for name, values in data["series"]:
+        chart_data.add_series(name, values)
+
+    chart_shape = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED, left, top, width, height,
+        chart_data)
+    chart = chart_shape.chart
+
+    if chart_title:
+        chart.has_title = True
+        chart.chart_title.text_frame.text = chart_title
+        for p in chart.chart_title.text_frame.paragraphs:
+            for run in p.runs:
+                run.font.name = FONT_SEMIBOLD
+                run.font.size = Pt(TEXT_BODY)
+                run.font.color.rgb = MS_DARK_BLUE
+
+    # Apply brand colors to series
+    if colors is None:
+        colors = [MS_BLUE, MS_DARK_BLUE, MS_GREEN, MS_ORANGE, MS_PURPLE, MS_RED]
+    plot = chart.plots[0]
+    for i, series in enumerate(plot.series):
+        series.format.fill.solid()
+        series.format.fill.fore_color.rgb = colors[i % len(colors)]
+
+    # Style: remove gridlines for cleaner look
+    chart.value_axis.has_major_gridlines = False
+    chart.value_axis.major_tick_mark = 2  # outside
+
+    return chart_shape
+
+
+def add_donut_chart(slide, data, left, top, width, height,
+                    chart_title="", colors=None, hole_size=50):
+    """Add a styled donut/pie chart.
+
+    data = {
+        "categories": ["Desktop", "Mobile", "Tablet"],
+        "values": [60, 30, 10],
+    }
+    hole_size: 0 = full pie, 50 = standard donut (default).
+    """
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+
+    chart_data = CategoryChartData()
+    chart_data.categories = data["categories"]
+    chart_data.add_series("Data", data["values"])
+
+    chart_type = XL_CHART_TYPE.DOUGHNUT if hole_size > 0 else XL_CHART_TYPE.PIE
+    chart_shape = slide.shapes.add_chart(
+        chart_type, left, top, width, height, chart_data)
+    chart = chart_shape.chart
+
+    if chart_title:
+        chart.has_title = True
+        chart.chart_title.text_frame.text = chart_title
+        for p in chart.chart_title.text_frame.paragraphs:
+            for run in p.runs:
+                run.font.name = FONT_SEMIBOLD
+                run.font.size = Pt(TEXT_BODY)
+                run.font.color.rgb = MS_DARK_BLUE
+
+    # Apply brand colors to data points
+    if colors is None:
+        colors = [MS_BLUE, MS_GREEN, MS_ORANGE, MS_DARK_BLUE, MS_PURPLE, MS_RED]
+    plot = chart.plots[0]
+    series = plot.series[0]
+    for i in range(len(data["categories"])):
+        point = series.points[i]
+        point.format.fill.solid()
+        point.format.fill.fore_color.rgb = colors[i % len(colors)]
+
+    return chart_shape
+
+
+def add_connector_line(slide, start_shape, end_shape, color=MS_BLUE,
+                       width_pt=1.5, dash=False):
+    """Add a proper PowerPoint connector between two shapes.
+
+    The connector snaps to shape connection points and reflows when shapes
+    are moved in PowerPoint. Use instead of chevron arrows for flow diagrams
+    that need to be editable.
+
+    start_shape, end_shape: python-pptx shape objects.
+    dash: if True, uses dashed line style.
+    """
+    from pptx.enum.shapes import MSO_CONNECTOR_TYPE
+
+    connector = slide.shapes.add_connector(
+        MSO_CONNECTOR_TYPE.STRAIGHT,
+        int(start_shape.left + start_shape.width),
+        int(start_shape.top + start_shape.height / 2),
+        int(end_shape.left),
+        int(end_shape.top + end_shape.height / 2))
+
+    connector.line.color.rgb = color
+    connector.line.width = Pt(width_pt)
+    if dash:
+        connector.line.dash_style = 4  # dash
+    return connector
 
 
 # ═════════════════════════════════════════════════════════════
