@@ -16,11 +16,11 @@
     "hackathons"
   ],
   "agents": [
-    "../../agent_defs/slides/",
-    "../../agent_defs/demos/",
-    "../../agent_defs/hackathons/",
-    "../../agent_defs/ai-project/"
+    "agent_defs/slides/",
+    "agent_defs/demos/",
+    "agent_defs/hackathons/",
+    "agent_defs/ai-project/"
   ],
-  "skills": "../../skills/",
+  "skills": "skills/",
   "mcpServers": ".mcp.json"
 }
